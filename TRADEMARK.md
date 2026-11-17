@@ -1,6 +1,6 @@
 # Trademark policy
 
-"Mera", "Mera News" and the Mera logos are trademarks of Mera Labs B.V.
+"Mera", "Mera News", "Mera Protocol" and the Mera logos are trademarks of Mera Labs B.V.
 
 The GNU Affero General Public License covers the code in this repository. It does not cover these names or logos.
 
@@ -13,7 +13,7 @@ The GNU Affero General Public License covers the code in this repository. It doe
 
 If you publish a fork, a modified build or a hosted service based on this code:
 
-- Give it a different name. Do not use "Mera", "Mera News" or a name that looks like them.
+- Give it a different name. Do not use "Mera", "Mera News", "Mera Protocol" or a name that looks like them.
 - Do not use the Mera logos.
 - Do not suggest that it is Mera News, or that Mera Labs B.V. made, approved or endorses it.
 

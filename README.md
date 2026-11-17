@@ -8,11 +8,13 @@ The news data server behind Mera News, by Mera Labs B.V. It reads RSS feeds that
 - A MongoDB deployment with vector search and search indexes
 - Redis
 - An embeddings key: `JINA_API_KEY` (used when `EMBEDDING_PROVIDER` is `jina`, the default)
-- A translation key: `GEMINI_API_KEY` (used when `TRANSLATION_PROVIDER` is `gemini`, the default)
+- A translation key: `GEMINI_API_KEY` (used when `TRANSLATION_PROVIDER` is `gemini`, the default, with `GEMINI_TRANSPORT=developer`, also the default. `GEMINI_TRANSPORT=vertex` uses Google application default credentials instead)
 
 Set `EMBEDDING_PROVIDER=fake` and `TRANSLATION_PROVIDER=fake` to run offline without keys. The fake providers are for local runs and tests.
 
 The other variables are in [apps/mera-server-async/.env.example](apps/mera-server-async/.env.example). The main ones are `MONGODB_URI`, `REDIS_URL` and `MERA_SERVER_ASYNC_API_KEY`. The news API refuses to start without `MERA_NEWS_API_KEY`.
+
+Export the variables in your shell, or put them in a `.env` file. The ingest worker reads `apps/mera-server-async/.env`, `npm run load-rss` reads `apps/mera-scripts/.env`, and every service also reads a `.env` at the repository root. Run every command from the repository root.
 
 ## Set up MongoDB
 
@@ -34,7 +36,7 @@ npm run async
 npm run news-api
 ```
 
-- `npm run load-rss` loads the feed list into the database.
+- `npm run load-rss` loads the feed list in `apps/mera-scripts/seed-data/active-feeds-auto-generated.json` into the database. It needs only `MONGODB_URI`. A full load upserts about 10,000 rows one at a time and takes about half an hour. `npm run load-rss -- --only <feedUrl>` loads one feed from that file (repeat `--only` for more). `--sync-delete` deletes every feed in the database that is not in the file, so run it without the flag first and read the count it would delete.
 - `npm run async` starts the ingest worker. It listens on `PORT`, or `ASYNC_PORT` (default 8080).
 - `npm run news-api` starts the GraphQL news API. It listens on `PORT`, or `NEWS_API_PORT` (default 3002).
 
@@ -47,7 +49,9 @@ curl -X POST http://localhost:8080/invoke \
   -d '{"queue_name": "news-sync-fanout"}'
 ```
 
-The `news-sync-fanout` queue creates a `load-rss-feed` job for each feed. Run the call from your own scheduler, such as cron, as often as you want new articles. Other valid queue names are listed in `libs/mera-shared/src/constants/queue-names.enum.ts`.
+The `news-sync-fanout` queue creates a `load-rss-feed` job for each feed that is due, then translates and embeds what arrives. A `queue_name` that is not a known queue is refused with 400. Run the call from your own scheduler, such as cron, as often as you want new articles. Other valid queue names are listed in `libs/mera-shared/src/constants/queue-names.enum.ts`.
+
+Grouping articles into stories is done by a separate clustering job that is not part of this repository.
 
 ## Tests
 
@@ -56,7 +60,7 @@ npm test
 npm run test:integration
 ```
 
-End-to-end tests run in CI.
+The integration tests run against an in-memory MongoDB. The first run downloads a MongoDB server binary. End-to-end tests run in CI.
 
 ## License
 
