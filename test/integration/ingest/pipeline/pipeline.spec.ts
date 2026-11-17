@@ -33,9 +33,11 @@ ${entries}
 </channel></rss>`;
 }
 
+// English descriptions are longer than CLD3's 140-byte minimum, so the
+// translate stage detects English and passes them through untranslated.
 const ENGLISH: Item[] = [
-  { title: 'Harbour council approves new ferry timetable', description: 'The council voted on Tuesday to add two evening crossings to the island ferry.' },
-  { title: 'Library opens a seed exchange for gardeners', description: 'Residents can borrow vegetable seeds and return harvested seeds each autumn.' },
+  { title: 'Harbour council approves new ferry timetable', description: 'The council voted on Tuesday to add two evening crossings to the island ferry, after a year of complaints from commuters who work late shifts on the mainland.' },
+  { title: 'Library opens a seed exchange for gardeners', description: 'Residents can borrow vegetable seeds from the central library and return a share of the seeds they harvest each autumn, so the collection grows every year.' },
 ];
 const GERMAN: Item[] = [
   { title: 'Stadtrat beschliesst neuen Fahrplan fuer die Faehre', description: 'Der Stadtrat hat am Dienstag zwei zusaetzliche Abendfahrten zur Insel beschlossen.' },
@@ -99,6 +101,12 @@ describe('ingest pipeline', () => {
       expect(article.description_en_internal_only).toBeTruthy();
       expect(article.embedding_article_data_retrieval).toHaveLength(768);
       expect(article.copy_keys?.length).toBeGreaterThan(0);
+      // The fake translator copies text, so the source field is what shows which
+      // path an article took: German was translated, English passed through.
+      const german = article.article_url.includes('deutsch.example.test');
+      expect(article.embedding_text_source).toBe(
+        german ? 'english_translation' : 'english_original',
+      );
       // The story key is written after the projector returns, so wait for it.
       await waitFor(() => articles.exists({ _id: article._id, story_key: { $exists: true, $ne: '' } }));
     }

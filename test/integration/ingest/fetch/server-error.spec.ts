@@ -44,9 +44,13 @@ describe('feed fetch: server error', () => {
     const after = await sources.findById(source._id).lean();
     expect(after).toMatchObject({
       is_active: true,
+      consecutive_fetch_failures: 3,
       last_fetch_status: 'http_status',
       last_fetch_http_status: 503,
     });
-    expect(after!.fetch_next_attempt_at!.getTime()).toBeGreaterThan(Date.now());
+    // Third failed cycle: the first backoff step, 60 minutes.
+    const waitMinutes = (after!.fetch_next_attempt_at!.getTime() - Date.now()) / 60_000;
+    expect(waitMinutes).toBeGreaterThan(58);
+    expect(waitMinutes).toBeLessThanOrEqual(60);
   });
 });
