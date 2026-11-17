@@ -21,7 +21,7 @@ export class NewsCluster {
 
   // Total members in this cluster across the rolling clustering window
   // (includes low-confidence fringe members). Denormalized by the Python
-  // clustering job (mera-ml-server-py `_persist_clusters`) so readers don't
+  // clustering job (mera-news-clustering, `_persist_clusters`) so readers don't
   // have to count cluster-article-link rows. Singletons/noise are size 1.
   // Nullable for back-compat with cluster docs written before this field.
   @Field(() => Int, { nullable: true })
@@ -36,13 +36,13 @@ export class NewsCluster {
 
   // v3 (additive): stamps the clustering run (UUID) that wrote this cluster.
   // The projector/topic-linker tag every write with it; the topic-linker deletes
-  // stale generations at the END of its run (generation swap — see the plan's
-  // idempotency section). Indexed for the `deleteMany({clusteringRunId:{$ne}})`.
+  // stale generations at the END of its run (a generation swap). Indexed for
+  // the `deleteMany({clusteringRunId:{$ne}})`.
   @Prop({ required: false, index: true })
   clusteringRunId?: string;
 
   // Additive: stable identity for a multi-member cluster, written by the
-  // Python clustering job (mera-ml-server-py `_persist_clusters`) so a story
+  // Python clustering job (mera-news-clustering, `_persist_clusters`) so a story
   // can be tracked across rolling-window clustering runs even though the
   // underlying NewsCluster doc is wipe-and-reinserted each run. Singletons/
   // noise clusters do not get one. Nullable everywhere — back-compat with

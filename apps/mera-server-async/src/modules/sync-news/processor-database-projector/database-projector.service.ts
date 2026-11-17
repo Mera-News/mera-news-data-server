@@ -368,7 +368,7 @@ export class DatabaseProjectorService {
       embedding_article_data_retrieval: entry.retrievalVector,
       // Prod ground-truth field name (NO `_internal_only` suffix — that variant
       // is v3 drift). Undeclared on the schema → strict:false persists it.
-      // Agent B's Python clustering job reads this exact field.
+      // The clustering job reads this exact field.
       embedding_article_data_text_matching: entry.textMatchingVector,
       // Near-copy signal for the story-key index rebuild (select:false).
       vector_sidecar_tm_packed: tmBits,
