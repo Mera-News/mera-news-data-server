@@ -1,5 +1,7 @@
 import { Types, type Connection } from 'mongoose';
-import { FakeEmbeddingProvider, topicEmbedText } from '@mera/news-core';
+// Relative, not `@mera/news-core`: the e2e jest config maps no aliases.
+import { FakeEmbeddingProvider } from '../../../../libs/mera-news-core/src/embedding-provider/fake-embedding.provider';
+import { topicEmbedText } from '../../../../libs/mera-news-core/src/embedding-provider/topic-embed-text';
 
 /**
  * Raw-collection fixtures for the retrieval tests. Inserted with the driver,
