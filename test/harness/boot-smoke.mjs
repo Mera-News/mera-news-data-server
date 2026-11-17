@@ -15,8 +15,9 @@ import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-const repo = resolve(import.meta.dirname, '../..');
-const SERVICES = ['mera-server-async', 'mera-server-news-api'];
+const repo = resolve(process.env.BOOT_SMOKE_ROOT ?? resolve(import.meta.dirname, '../..'));
+const args = process.argv.slice(2);
+const SERVICES = args.length ? args : ['mera-server-async', 'mera-server-news-api'];
 const LOAD_FAILURES = [
   'ERR_REQUIRE_ESM',
   'ERR_REQUIRE_ASYNC_MODULE',
@@ -38,6 +39,7 @@ const env = {
   MONGODB_URI: dead,
   REDIS_URL: 'redis://127.0.0.1:9',
   PERSISTENT_REDIS_URL: 'redis://127.0.0.1:9',
+  ...JSON.parse(process.env.BOOT_SMOKE_EXTRA_ENV ?? '{}'),
 };
 
 const findLoadFailure = (text) => LOAD_FAILURES.find((s) => text.includes(s));
