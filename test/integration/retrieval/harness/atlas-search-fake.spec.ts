@@ -12,6 +12,9 @@ const INDEX = 'embedding_article_data_retrieval_index';
 const PATH = 'embedding_article_data_retrieval';
 const DIMS = 768;
 
+const hoursAgo = (hours: number) =>
+  new Date(Date.now() - hours * 60 * 60 * 1000);
+
 const unit = (...head: number[]) => [
   ...head,
   ...new Array<number>(DIMS - head.length).fill(0),
@@ -106,13 +109,37 @@ describe('atlas-search-fake', () => {
 
   it('excludes an old document with a createdAt $gte filter', async () => {
     await model.collection.insertMany([
-      { name: 'old', createdAt: new Date('2020-01-01'), [PATH]: unit(1) },
-      { name: 'new', createdAt: new Date(), [PATH]: unit(1) },
+      { name: 'old', createdAt: hoursAgo(25), [PATH]: unit(1) },
+      { name: 'new', createdAt: hoursAgo(1), [PATH]: unit(1) },
     ]);
     const rows = await run(
-      stage({ filter: { createdAt: { $gte: new Date('2024-01-01') } } }),
+      stage({ filter: { createdAt: { $gte: hoursAgo(24) } } }),
     );
     expect(rows.map((r) => r.name)).toEqual(['new']);
+  });
+
+  it('honours $or over declared fields with $in and $not', async () => {
+    await model.collection.insertMany([
+      { name: 'a', createdAt: hoursAgo(1), [PATH]: unit(1) },
+      { name: 'b', createdAt: hoursAgo(30), [PATH]: unit(1) },
+    ]);
+    const rows = await run(
+      stage({
+        filter: {
+          $or: [
+            { createdAt: { $not: { $lt: hoursAgo(2) } } },
+            { createdAt: { $in: [hoursAgo(1000)] } },
+          ],
+        },
+      }),
+    );
+    expect(rows.map((r) => r.name)).toEqual(['a']);
+  });
+
+  it('lets a non-search $meta through to MongoDB', async () => {
+    await model.collection.insertOne({ name: 'plain' });
+    const rows = await run({ $addFields: { r: { $meta: 'randVal' } } });
+    expect(rows).toHaveLength(1);
   });
 
   it('skips documents without a usable vector', async () => {
@@ -138,6 +165,14 @@ describe('atlas-search-fake', () => {
 
   it('throws on a filter field that is not declared in the index', () =>
     rejects(stage({ filter: { url_security_state: { $eq: 'ok' } } })));
+  it('throws on a declared field compared to an object literal', () =>
+    expect(run(stage({ filter: { createdAt: { day: 1 } } }))).rejects.toThrow(
+      /"createdAt" compares to an object/,
+    ));
+  it('throws on an unsupported filter operator', () =>
+    rejects(stage({ filter: { createdAt: { $regex: 'x' } } })));
+  it('throws on a comparison operator at document level', () =>
+    rejects(stage({ filter: { $gte: hoursAgo(1) } })));
   it('throws on exact: true', () => rejects(stage({ exact: true })));
   it('throws on a vector with 767 dimensions', () =>
     rejects(stage({ queryVector: new Array<number>(767).fill(1) })));

@@ -36,11 +36,10 @@ const STAGE_KEYS = [
   'limit',
   'filter',
 ];
-const FILTER_OPERATORS = new Set([
-  '$and',
-  '$or',
-  '$nor',
-  '$not',
+// The vector search filter grammar: logical operators over field conditions,
+// and comparison operators on scalar values only.
+const LOGICAL_OPERATORS = new Set(['$and', '$or', '$nor']);
+const COMPARISON_OPERATORS = new Set([
   '$eq',
   '$ne',
   '$gt',
@@ -50,8 +49,18 @@ const FILTER_OPERATORS = new Set([
   '$in',
   '$nin',
   '$exists',
+  '$not',
 ]);
 const FORBIDDEN_STAGES = ['$search', '$searchMeta', '$listSearchIndexes'];
+// `$meta` kinds that only a search index produces. Other kinds (textScore,
+// randVal, ...) are plain MongoDB and pass through.
+const SEARCH_META = new Set([
+  'vectorSearchScore',
+  'searchScore',
+  'searchScoreDetails',
+  'searchHighlights',
+  'searchSequenceToken',
+]);
 
 type Exec = typeof mongoose.Aggregate.prototype.exec;
 type Pipeline = Record<string, any>[];
@@ -69,16 +78,19 @@ const isPlainObject = (v: unknown): v is Record<string, unknown> =>
   v !== null &&
   Object.getPrototypeOf(v) === Object.prototype;
 
-/** Throws on any `$meta` other than `vectorSearchScore`; returns whether one is present. */
+/**
+ * Throws on a search `$meta` other than `vectorSearchScore`; returns whether
+ * `vectorSearchScore` is present.
+ */
 function scanMeta(node: unknown): boolean {
   if (Array.isArray(node)) return node.map(scanMeta).some(Boolean);
   if (!isPlainObject(node)) return false;
   let found = false;
   for (const [key, value] of Object.entries(node)) {
     if (key === '$meta') {
-      if (value !== 'vectorSearchScore')
+      if (value === 'vectorSearchScore') found = true;
+      else if (SEARCH_META.has(value as string))
         refuse(`$meta ${JSON.stringify(value)} is not supported`);
-      found = true;
     } else found = scanMeta(value) || found;
   }
   return found;
@@ -93,21 +105,54 @@ function replaceMeta(node: unknown, score: unknown): unknown {
   );
 }
 
+/** A filter document: logical operators and declared filter fields only. */
 function checkFilter(node: unknown, filterPaths: Set<string>): void {
-  if (Array.isArray(node))
-    return node.forEach((n) => checkFilter(n, filterPaths));
-  if (!isPlainObject(node)) return;
+  if (!isPlainObject(node)) refuse('filter must be an object');
   for (const [key, value] of Object.entries(node)) {
-    if (key.startsWith('$')) {
-      if (!FILTER_OPERATORS.has(key))
-        refuse(`filter operator ${key} is not supported`);
+    if (LOGICAL_OPERATORS.has(key)) {
+      if (!Array.isArray(value) || value.length === 0)
+        refuse(`${key} needs a non-empty array`);
+      value.forEach((n) => checkFilter(n, filterPaths));
+    } else if (key.startsWith('$')) {
+      refuse(`filter operator ${key} is not supported here`);
     } else if (!filterPaths.has(key)) {
       refuse(
         `filter field "${key}" is not declared as a filter field in the index`,
       );
+    } else {
+      checkCondition(key, value);
     }
-    checkFilter(value, filterPaths);
   }
+}
+
+/** The condition on one field: a scalar, or comparison operators on scalars. */
+function checkCondition(field: string, value: unknown): void {
+  if (!isPlainObject(value)) return checkScalar(field, value);
+  for (const [op, operand] of Object.entries(value)) {
+    if (!COMPARISON_OPERATORS.has(op))
+      refuse(
+        op.startsWith('$')
+          ? `filter operator ${op} is not supported`
+          : `filter field "${field}" compares to an object, which vector search does not support`,
+      );
+    if (op === '$not') checkCondition(field, operand);
+    else if (op === '$in' || op === '$nin') {
+      if (!Array.isArray(operand)) refuse(`${op} needs an array`);
+      operand.forEach((v) => checkScalar(field, v));
+    } else checkScalar(field, operand);
+  }
+}
+
+function checkScalar(field: string, value: unknown): void {
+  const ok =
+    value === null ||
+    ['string', 'number', 'boolean'].includes(typeof value) ||
+    value instanceof Date ||
+    value instanceof mongoose.Types.ObjectId;
+  if (!ok)
+    refuse(
+      `filter field "${field}" compares to a ${Array.isArray(value) ? 'array' : typeof value}, which vector search does not support`,
+    );
 }
 
 function cosine(a: number[], b: number[]): number | undefined {
@@ -178,7 +223,7 @@ async function rewrite(
       .filter((f) => f.type === 'filter')
       .map((f) => f.path),
   );
-  checkFilter(stage.filter, filterPaths);
+  if (stage.filter !== undefined) checkFilter(stage.filter, filterPaths);
 
   const path = stage.path as string;
   const docs = await model.collection
