@@ -49,6 +49,9 @@ describe('atlas-search-fake', () => {
       new Schema({}, { strict: false }),
       'news-article',
     );
+    // An app booted earlier on this worker's database leaves the real model's
+    // unique article_url index behind; these bare documents would collide on it.
+    await model.collection.drop().catch(() => undefined);
   });
   beforeEach(async () => {
     await model.collection.deleteMany({});
