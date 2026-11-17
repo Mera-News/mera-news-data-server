@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Harbor Ledger</title>
+    <link>https://harbor-ledger.example/</link>
+    <description>Invented fixture feed</description>
+    <language>en</language>
+    <item>
+      <title>Council approves new tram line across the river</title>
+      <link>https://harbor-ledger.example/tram-line</link>
+      <description>The council voted to build a tram line linking the east and west districts, with construction due to begin next spring.</description>
+      <pubDate>Mon, 16 Nov 2026 08:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Fishing fleet returns early after storm warning</title>
+      <link>https://harbor-ledger.example/fleet-returns</link>
+      <description>Dozens of boats came back to port a day early as forecasters warned of high winds along the coast.</description>
+      <pubDate>Mon, 16 Nov 2026 09:00:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>
