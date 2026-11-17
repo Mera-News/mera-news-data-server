@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run test:integration
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build:async
+      - run: npm run build:scripts
+      - run: npm run build:news-api
+      - run: npm run boot-smoke
+
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      mongo:
+        image: mongodb/mongodb-atlas-local:8
+        env:
+          DO_NOT_TRACK: "1"
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ping:1})'"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+      redis:
+        image: redis:7.2-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      MONGODB_URI: mongodb://localhost:27017/e2e?directConnection=true
+      REDIS_URL: redis://localhost:6379
+      PERSISTENT_REDIS_URL: redis://localhost:6379
+      MERA_SERVER_ASYNC_API_KEY: e2e-local-key
+      EMBEDDING_PROVIDER: fake
+      TRANSLATION_PROVIDER: fake
+      ARTICLE_ENRICHMENT_PROVIDER: fake
+      HTTP_UPGRADE_PROBE_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build:async
+      - run: npm run test:e2e
