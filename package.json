@@ -13,7 +13,7 @@
     "build:async": "nest build mera-server-async",
     "build:news-api": "nest build mera-server-news-api",
     "build:scripts": "nest build mera-scripts",
-    "typecheck": "tsc -p apps/mera-server-async/tsconfig.app.json --noEmit && tsc -p apps/mera-scripts/tsconfig.app.json --noEmit && tsc -p apps/mera-server-news-api/tsconfig.app.json --noEmit",
+    "typecheck": "tsc -p tsconfig.typecheck.json",
     "format": "prettier --write \"apps/**/*.ts\" \"libs/**/*.ts\" \"test/**/*.ts\"",
     "lint": "eslint \"{apps,libs,test}/**/*.ts\"",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest --selectProjects unit",
