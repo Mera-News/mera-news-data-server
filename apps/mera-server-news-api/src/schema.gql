@@ -1,0 +1,384 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+"""Status of article processing through the pipeline"""
+enum ArticleProcessingStatus {
+  AGGREGATION_ENQUEUED
+  AGGREGATION_FAILED
+  AGGREGATION_SUCCESSFUL
+  DETECT_LANGUAGE_ENQUEUED
+  DETECT_LANGUAGE_FAILED
+  DETECT_LANGUAGE_SUCCESSFUL
+  EMBEDDING_ENQUEUED
+  EMBEDDING_FAILED
+  EMBEDDING_SUCCESSFUL
+  PENDING
+  TRANSLATION_ENQUEUED
+  TRANSLATION_FAILED
+  TRANSLATION_SKIPPED
+  TRANSLATION_SUCCESS
+}
+
+"""Sibling article returned by the relatedArticles query"""
+type ArticleSummary {
+  _id: ID!
+  article_url: String
+  country_code: String
+  description_en: String
+  image_url: String
+  language_code: String
+  pubDate: DateTime!
+  publication_name: String
+  title_en: String!
+  title_original: String
+}
+
+"""Article summary with cluster membership — used by Flow v2 hydration"""
+type ArticleWithClusters {
+  _id: ID!
+  article_url: String
+  category: String
+  clusters: [ClusterMembership!]!
+  content_categories: [String!]
+  country_code: String
+  description_en: String
+  entities: [String!]
+  event_type: String
+  genre: String
+  geo_scope: String
+  geo_tags: [GeoTagDto!]
+  image_url: String
+  language_code: String
+  maxClusterSize: Int
+  pubDate: DateTime!
+  publication_name: String
+  significance: Int
+  story_key: String
+  title: String
+  title_en: String!
+  tone: String
+  vector_sidecar_packed: String
+}
+
+type ArticlesForPublicationSourceResponse {
+  articles: [NewsArticle!]!
+  pageInfo: CursorPageInfo!
+}
+
+"""
+Hydrated articles for a set of IDs, plus the daily-delivery-cap signal. The cap is charged here (delivery point), so a clipped response means the user hit their daily article limit — distinct from IDs that simply TTL'd out.
+"""
+type ArticlesForTopicsByIdsResponse {
+  articles: [ArticleWithClusters!]!
+
+  """
+  True when the user's daily article-delivery cap clipped this response (fewer articles returned than requested).
+  """
+  dailyLimitReached: Boolean!
+
+  """
+  ISO timestamp of the next 00:00 UTC when the daily cap resets; set only when dailyLimitReached is true.
+  """
+  resetAt: String
+}
+
+"""
+Membership of an article in a cluster, with the HDBSCAN confidence (0.0–1.0)
+"""
+type ClusterMembership {
+  clusterId: ID!
+  confidence: Float!
+  stableClusterId: String
+}
+
+type CursorPageInfo {
+  endCursor: String
+  hasNextPage: Boolean!
+  pageSize: Int!
+}
+
+"""
+A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
+"""
+scalar DateTime
+
+type EmbeddingSearchResult {
+  article: NewsArticle!
+  score: Float!
+}
+
+"""
+A geo tag on an article (written by the tagging pipeline). city/region are optional; countryCode is always present.
+"""
+type GeoTagDto {
+  city: String
+  countryCode: String!
+  geonameId: Int
+  region: String
+}
+
+"""Top-headlines scope. COUNTRY requires countryCode; GLOBAL takes none."""
+enum HeadlineScope {
+  COUNTRY
+  GLOBAL
+}
+
+"""
+A single top-headlines scope. COUNTRY requires countryCode; GLOBAL takes none.
+"""
+input HeadlineScopeInput {
+  countryCode: String
+  limit: Int
+  scope: HeadlineScope!
+}
+
+"""
+Top-headline article ids for one scope. clusterSizes and stableClusterIds are positionally aligned with articleIds.
+"""
+type HeadlineScopeResult {
+  articleIds: [ID!]!
+  clusterSizes: [Int!]!
+  countryCode: String
+  scope: HeadlineScope!
+  stableClusterIds: [String]!
+}
+
+type NewsArticle {
+  _id: ID!
+  article_url: String!
+  category: String
+  clusterConfidence: Float
+  content_categories: [String!]
+  content_category: String
+  country: String
+  createdAt: DateTime!
+  creator: String
+  description: String!
+  description_en: String
+  description_en_internal_only: String @deprecated(reason: "Use description_en instead. Superseded by the v3 pipeline.")
+  embedding_attempts: Int
+  embedding_status: String
+  entities: [String!]
+  event_type: String
+  fetchPublicationId: ID @deprecated(reason: "v1-only link to the fetch state machine; unused by the v3 pipeline.")
+  genre: String
+  geo_scope: String
+  geo_tags: [GeoTagDto!]
+  image_url: String
+  original_language_code: String
+  processingStatus: ArticleProcessingStatus @deprecated(reason: "v1-only pipeline state; in v3 an article present in the DB is complete.")
+  pubDate: DateTime!
+  publicationSource: PublicationSource
+  publicationSourceId: ID!
+  significance: Int
+  source_uri: String!
+  title: String!
+  title_en: String
+  title_en_internal_only: String @deprecated(reason: "Use title_en instead. Superseded by the v3 pipeline.")
+  tone: String
+  translation_attempts: Int
+  translation_skip_reason: String
+  translation_skipped: Boolean
+  translation_status: String
+  type: String!
+  updatedAt: DateTime!
+}
+
+type NewsCluster {
+  _id: ID!
+  clusterSize: Int
+  createdAt: DateTime!
+  stableClusterId: String
+  topicConfidence: Float
+  updatedAt: DateTime!
+}
+
+type NewsPublisher {
+  _id: ID!
+  categories: [String!]
+  country_code: String!
+  country_name: String
+  createdAt: DateTime!
+  is_active: Boolean!
+  name: String!
+  publicationSources: [PublicationSource!]!
+  publication_type: String
+  subscription_uri: String
+  updatedAt: DateTime!
+  website_url: String
+}
+
+type NewsPublishersResponse {
+  newsPublishers: [NewsPublisher!]!
+  pageInfo: CursorPageInfo!
+}
+
+"""
+Per-article match metadata. textScore is ALWAYS null in v1. stableClusterId is the id of the article's largest-clusterSize linked cluster, null when the article is a singleton/unclustered.
+"""
+type PersonaMatchMeta {
+  articleId: ID!
+  stableClusterId: String
+  textScore: Float
+  vectorScore: Float
+}
+
+"""
+Privacy-lean persona query: topic texts + optional top-headlines scopes. No locations, weights, or exclude-topics are ever accepted here (deliberate).
+"""
+input PersonaQueryInput {
+  limitPerTopic: Int! = 20
+
+  """
+  Optional hard cap on total ids across topicResults; the lowest-priority (last) topics are truncated first once the cap is reached.
+  """
+  maxArticles: Int
+  topHeadlines: TopHeadlinesInput
+
+  """Up to MAX_TOPICS_PER_REQUEST (default 200); topicText ≤ 512."""
+  topics: [PersonaTopicInput!]!
+}
+
+"""
+Privacy-lean persona query result: per-topic article ids + match metadata, plus optional per-scope top headlines.
+"""
+type PersonaQueryResult {
+  headlineResults: [HeadlineScopeResult!]!
+  topicResults: [PersonaTopicResult!]!
+}
+
+"""
+A single persona topic. `limit` overrides the query-level limitPerTopic; `afterCursor` is the articleId of the last item on the previous page.
+"""
+input PersonaTopicInput {
+  afterCursor: ID
+  limit: Int
+
+  """
+  Require the narrowest place term in the topic rather than any of them. Request-scoped and never stored.
+  """
+  strictMatch: Boolean! = false
+  text: String!
+}
+
+"""Resolved article ids + match metadata for one persona topic."""
+type PersonaTopicResult {
+  articleIds: [ID!]!
+  hasNextPage: Boolean!
+  matchMeta: [PersonaMatchMeta!]!
+  nextCursor: ID
+  topicText: String!
+}
+
+type PublicationSource {
+  _id: ID!
+  categories: [String!]
+  category: String!
+  codegen_checked_at: DateTime
+  codegen_status: String
+  consecutive_fetch_failures: Float
+  country_code: String!
+  country_name: String
+  createdAt: DateTime!
+  detected_language_code: String
+  feed_language_code: String
+  feed_url: String!
+  gated: Boolean!
+  is_active: Boolean!
+  is_active_codegen: Boolean
+  is_active_user: Boolean
+  last_fetch_error: String
+  last_fetch_http_status: Float
+  last_fetch_status: String
+  last_fetched_at: DateTime
+  newsPublisherId: ID
+  publication_name: String!
+  publication_type: String
+  publication_url: String
+  type: String!
+  updatedAt: DateTime!
+}
+
+type PublisherSearchHit {
+  _id: ID!
+  country_code: String!
+  country_name: String
+  matchingSources: [PublicationSource!]!
+  name: String!
+  subscription_uri: String
+  website_url: String
+}
+
+type Query {
+  allCountries: [String!]!
+
+  """
+  Fetch a single article by ID. Returns null if not found (e.g. TTL’d out).
+  """
+  articleById(id: ID!): NewsArticle
+  articleIdsForPersona(query: PersonaQueryInput!): PersonaQueryResult!
+  articlesForCountry(after: String, countryCode: String, first: Int = 20): ArticlesForPublicationSourceResponse!
+  articlesForPublicationSource(after: String, first: Int = 20, publicationSourceId: ID!): ArticlesForPublicationSourceResponse!
+  articlesForPublisher(after: String, first: Int = 20, newsPublisherId: ID!): ArticlesForPublicationSourceResponse!
+  articlesForTopicsByIds(articleIds: [ID!]!): ArticlesForTopicsByIdsResponse!
+  newsClusterForArticle(articleId: ID!): NewsCluster
+  newsPublishers(after: String, countryCode: String, first: Int = 20): NewsPublishersResponse!
+  recentArticleCount(since: DateTime): Int!
+  relatedArticles(articleId: ID!, stableClusterId: String): [ArticleSummary!]!
+  topHeadlinesForCountry(after: String, countryCode: String, first: Int = 20): TopHeadlinesForCountryResponse!
+}
+
+"""
+Country and language counts over the related set. Each dimension is counted with the filter of the other dimension applied.
+"""
+type RelatedArticleFacets {
+  countries: [RelatedFacetCount!]!
+  languages: [RelatedFacetCount!]!
+}
+
+"""One chip for the related-coverage filters, with its row count."""
+type RelatedFacetCount {
+  """
+  Country as ISO alpha-3 (or GLOBAL for international sources), or a base language tag.
+  """
+  code: String!
+  count: Int!
+}
+
+"""
+One top-headline slot: the representative article plus its cluster metadata (stableClusterId, clusterSize). Both are null/0 for an unclustered singleton.
+"""
+type TopHeadline {
+  article: NewsArticle!
+
+  """Global cluster size across the clustering window; 0 for a singleton."""
+  clusterSize: Int!
+
+  """
+  Stable cross-run identity of this headline's cluster; null for a singleton.
+  """
+  stableClusterId: String
+}
+
+type TopHeadlinesForCountryResponse {
+  articles: [NewsArticle!]! @deprecated(reason: "Use headlines")
+  editionBuiltAt: DateTime
+  headlines: [TopHeadline!]!
+  pageInfo: CursorPageInfo!
+}
+
+"""
+Optional top-headlines block. Up to 6 scopes; limitPerScope capped at 25.
+"""
+input TopHeadlinesInput {
+  limitPerScope: Int! = 10
+  scopes: [HeadlineScopeInput!]!
+}
+
+type TopicArticleIdsResult {
+  articleIds: [ID!]!
+  hasNextPage: Boolean!
+  nextCursor: String
+  topicText: String!
+}
