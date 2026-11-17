@@ -1,6 +1,7 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import {
   Args,
+  Context,
   ID,
   Int,
   Parent,
@@ -29,6 +30,7 @@ import {
   TopHeadlinesService,
   CountryService,
 } from '@mera/news-core';
+import type { ApiKeyRequest } from '../guards/api-key.guard';
 
 /**
  * The internal news surface — every root field the news client's `MeraNewsAdapter`
@@ -144,13 +146,14 @@ export class InternalNewsResolver {
   /**
    * UNMETERED. `ARTICLE_QUOTA` is bound to `NoopArticleQuota` in this app, so
    * `dailyLimitReached` is always false and `resetAt` always absent — pinned by
-   * `libs/mera-news-core/src/quota/noop-article-quota.spec.ts`.
+   * the news-api contract tests in `test/integration/retrieval/`.
    */
   @Query(() => ArticlesForTopicsByIdsResponse, {
     name: 'articlesForTopicsByIds',
   })
   async articlesForTopicsByIds(
     @Args('articleIds', { type: () => [ID] }) articleIds: string[],
+    @Context('req') req: ApiKeyRequest,
   ): Promise<ArticlesForTopicsByIdsResponse> {
     // Unmetered AND unbounded is the wrong combination. On the app-facing API
     // the quota IS the cap on this query; here there is no quota, so request
@@ -163,13 +166,14 @@ export class InternalNewsResolver {
         `Too many article ids: ${articleIds.length} exceeds the maximum of ${MAX_ARTICLE_IDS_PER_REQUEST}`,
       );
     }
-    // The userId argument is structural — the service signature takes one — but
-    // nothing downstream reads it under the no-op binding. A constant is passed
-    // rather than a caller-supplied value so no identity can be smuggled in
-    // through this argument later.
+    // The quota is charged to whoever the key belongs to, as the guard's
+    // verifier answered it. Never a caller-supplied value, so no identity can
+    // be smuggled in through this argument. Unread under the no-op binding.
+    const principal = req?.apiPrincipal;
+    if (!principal) throw new UnauthorizedException('Invalid API key');
     return this.articlesForTopicsService.getArticlesForTopicsByIds(
       articleIds,
-      INTERNAL_PRINCIPAL,
+      principal,
     );
   }
 
@@ -382,10 +386,3 @@ const MAX_LIMIT_PER_SCOPE = 25;
  * size. The adapter chunks at 50.
  */
 const MAX_ARTICLE_IDS_PER_REQUEST = 50;
-
-/**
- * Stand-in for the userId the metered pipeline expects. Never read under
- * `NoopArticleQuota`; it exists so the call site cannot be "improved" into
- * forwarding something caller-supplied.
- */
-const INTERNAL_PRINCIPAL = 'internal-news-api';

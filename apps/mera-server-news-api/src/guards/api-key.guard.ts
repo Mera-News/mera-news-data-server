@@ -1,6 +1,7 @@
 import {
   CanActivate,
   ExecutionContext,
+  Inject,
   Injectable,
   SetMetadata,
   UnauthorizedException,
@@ -23,6 +24,9 @@ import { HealthController } from '@mera/shared/health/health.controller';
  */
 export const SKIP_API_KEY = 'skipApiKey';
 export const SkipApiKey = () => SetMetadata(SKIP_API_KEY, true);
+
+/** DI token for {@link ApiKeyVerifier}. Declared before the guard that injects it. */
+export const API_KEY_VERIFIER = Symbol('API_KEY_VERIFIER');
 
 /**
  * The ONLY credential on this service.
@@ -50,15 +54,19 @@ export const SkipApiKey = () => SetMetadata(SKIP_API_KEY, true);
  * FAIL CLOSED. A missing `MERA_NEWS_API_KEY` throws rather than waving requests
  * through. A misconfigured deployment must refuse traffic, not serve the entire
  * news corpus unauthenticated to whoever finds the URL.
+ *
+ * WHO the key belongs to is the injected `API_KEY_VERIFIER`'s answer, so a
+ * deployment that issues its own keys binds its own verifier instead of
+ * forking this guard. The answer rides on the request as `apiPrincipal`.
  */
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
   constructor(
-    private readonly configService: ConfigService,
+    @Inject(API_KEY_VERIFIER) private readonly verifier: ApiKeyVerifier,
     private readonly reflector: Reflector,
   ) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const skip = this.reflector.getAllAndOverride<boolean>(SKIP_API_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -71,19 +79,18 @@ export class ApiKeyGuard implements CanActivate {
     // string, which would also exempt anything later mounted beneath /health.
     if (context.getClass() === HealthController) return true;
 
-    const expectedKey = this.configService.get<string>('MERA_NEWS_API_KEY');
-    if (!expectedKey) {
-      throw new UnauthorizedException('MERA_NEWS_API_KEY is not configured');
-    }
-
     const request = this.getRequest(context);
     const presented = request?.headers?.['x-api-key'];
+    const principal = await this.verifier.verify(
+      typeof presented === 'string' ? presented : undefined,
+    );
 
-    if (typeof presented !== 'string' || !safeEqual(presented, expectedKey)) {
+    if (!principal || !request) {
       // Deliberately unspecific: "wrong key" and "no key" produce the same
       // message, so a prober learns nothing about which it was.
       throw new UnauthorizedException('Invalid API key');
     }
+    request.apiPrincipal = principal;
     return true;
   }
 
@@ -93,14 +100,51 @@ export class ApiKeyGuard implements CanActivate {
    * guard also works on plain controllers (the health route, and anything REST
    * added later).
    */
-  private getRequest(context: ExecutionContext): Request | undefined {
+  private getRequest(context: ExecutionContext): ApiKeyRequest | undefined {
     if (context.getType<'graphql'>() === 'graphql') {
-      return GqlExecutionContext.create(context).getContext<{ req?: Request }>()
-        ?.req;
+      return GqlExecutionContext.create(context).getContext<{
+        req?: ApiKeyRequest;
+      }>()?.req;
     }
-    return context.switchToHttp().getRequest<Request>();
+    return context.switchToHttp().getRequest<ApiKeyRequest>();
   }
 }
+
+/** A request that passed {@link ApiKeyGuard}, carrying whose key it was. */
+export type ApiKeyRequest = Request & { apiPrincipal?: string };
+
+export interface ApiKeyVerifier {
+  /**
+   * The principal a presented key belongs to, or null for a wrong or missing
+   * key. Throws when the verifier itself is not configured (fail closed).
+   */
+  verify(presented: string | undefined): Promise<string | null>;
+}
+
+/**
+ * The default verifier: one shared key from `MERA_NEWS_API_KEY`, compared in
+ * constant time. Every holder of that key is the same principal.
+ */
+@Injectable()
+export class EnvApiKeyVerifier implements ApiKeyVerifier {
+  constructor(private readonly configService: ConfigService) {}
+
+  verify(presented: string | undefined): Promise<string | null> {
+    const expectedKey = this.configService.get<string>('MERA_NEWS_API_KEY');
+    if (!expectedKey) {
+      throw new UnauthorizedException('MERA_NEWS_API_KEY is not configured');
+    }
+    const matches =
+      presented !== undefined && safeEqual(presented, expectedKey);
+    return Promise.resolve(matches ? INTERNAL_PRINCIPAL : null);
+  }
+}
+
+/**
+ * The principal of the shared key. Never read under `NoopArticleQuota`; a
+ * constant, so no caller-supplied value can be smuggled in as an identity.
+ */
+const INTERNAL_PRINCIPAL = 'internal-news-api';
 
 /**
  * Constant-time string comparison.

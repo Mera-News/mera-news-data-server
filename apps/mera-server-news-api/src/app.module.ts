@@ -23,7 +23,11 @@ import {
   MeraNewsCoreModule,
   NoopArticleQuota,
 } from '@mera/news-core';
-import { ApiKeyGuard } from './guards/api-key.guard';
+import {
+  API_KEY_VERIFIER,
+  ApiKeyGuard,
+  EnvApiKeyVerifier,
+} from './guards/api-key.guard';
 import {
   InternalNewsPublisherFieldResolver,
   InternalNewsResolver,
@@ -175,6 +179,7 @@ const DEFAULT_CACHE_TTL_MS = 3_600_000;
     InternalNewsPublisherFieldResolver,
     // Global, so a new resolver is protected by default rather than by
     // remembering to decorate it. Opt out with `@SkipApiKey()`.
+    { provide: API_KEY_VERIFIER, useClass: EnvApiKeyVerifier },
     { provide: APP_GUARD, useClass: ApiKeyGuard },
   ],
 })
