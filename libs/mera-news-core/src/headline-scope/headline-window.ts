@@ -4,7 +4,7 @@
  * TTL), counting only the articles inside the view. `entries` on the edition is
  * the 24h list; the others live in `views`.
  *
- * ponytail: a fixed set, not free input. Each view is a full ranked list built
+ * shortcut: a fixed set, not free input. Each view is a full ranked list built
  * every run; a new value means a new list, so add it here and rebuild.
  */
 export const HEADLINE_VIEW_WINDOWS_HOURS = [6, 12, 24, 48] as const;

@@ -73,7 +73,7 @@ export interface BuildHeadlineEditionsResult {
  * arrived inside that view, upserts all editions in one bulkWrite and prunes
  * scopes no longer present.
  *
- * ponytail: the :20 build reads the previous clustering run, so the newest ~1h
+ * shortcut: the :20 build reads the previous clustering run, so the newest ~1h
  * is always unclustered and the 6h view loses about a sixth of its signal.
  * Building right after clustering finishes is the fix if 6h reads thin.
  */
