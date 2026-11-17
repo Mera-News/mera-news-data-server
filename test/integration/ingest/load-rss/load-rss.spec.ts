@@ -2,17 +2,22 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { ConfigModule } from '@nestjs/config';
-import { MongooseModule, getModelToken } from '@nestjs/mongoose';
+import {
+  MongooseModule,
+  getConnectionToken,
+  getModelToken,
+} from '@nestjs/mongoose';
 import { Test } from '@nestjs/testing';
 import type { INestApplicationContext } from '@nestjs/common';
-import { Model } from 'mongoose';
+import { Connection, Model } from 'mongoose';
 import { LoadRssCommand } from '../../../../apps/mera-scripts/src/commands/load-rss/load-rss.command';
 import { LoadRssModule } from '../../../../apps/mera-scripts/src/commands/load-rss/load-rss.module';
 import { NewsPublisher } from '@mera/models/models/news-publisher.model';
 import { PublicationSource } from '@mera/models/models/publication-source.model';
 
+// Keyed alpha-3, as the real feed list is; the import stores the key verbatim.
 const SEED = {
-  GB: [
+  GBR: [
     {
       publication_name: 'Harbour Gazette',
       publication_website_uri: 'https://harbour-gazette.example.test',
@@ -30,7 +35,7 @@ const SEED = {
       ],
     },
   ],
-  IN: [
+  IND: [
     {
       publication_name: 'Lantern Daily',
       publication_website_uri: 'https://lantern-daily.example.test',
@@ -44,18 +49,14 @@ const SEED = {
 describe('load-rss command', () => {
   let app: INestApplicationContext;
   let dir: string;
-  let cwd: string;
 
   beforeAll(async () => {
-    // The command reads <cwd>/apps/mera-scripts/seed-data/..., so run it from a temp root.
-    cwd = process.cwd();
     dir = mkdtempSync(join(tmpdir(), 'load-rss-'));
     mkdirSync(join(dir, 'apps/mera-scripts/seed-data'), { recursive: true });
     writeFileSync(
       join(dir, 'apps/mera-scripts/seed-data/active-feeds-auto-generated.json'),
       JSON.stringify(SEED),
     );
-    process.chdir(dir);
 
     const moduleRef = await Test.createTestingModule({
       imports: [
@@ -65,16 +66,27 @@ describe('load-rss command', () => {
       ],
     }).compile();
     app = await moduleRef.init();
+    // The worker database is shared with other test files: start empty.
+    const db = app.get<Connection>(getConnectionToken()).db!;
+    for (const c of await db.collections()) await c.deleteMany({});
   });
 
   afterAll(async () => {
-    process.chdir(cwd);
     await app?.close();
     rmSync(dir, { recursive: true, force: true });
   });
 
   it('imports publishers and their feeds from the seed', async () => {
-    await app.get(LoadRssCommand).run([], {});
+    // The command reads <cwd>/apps/mera-scripts/seed-data/..., so it runs from
+    // the temp root. The process cwd is shared by every test file in this
+    // worker, so it is restored even when the run throws.
+    const cwd = process.cwd();
+    process.chdir(dir);
+    try {
+      await app.get(LoadRssCommand).run([], {});
+    } finally {
+      process.chdir(cwd);
+    }
 
     const publishers = app.get<Model<NewsPublisher>>(
       getModelToken(NewsPublisher.name),
@@ -89,7 +101,7 @@ describe('load-rss command', () => {
       .findOne({ name: 'Harbour Gazette' })
       .lean();
     expect(harbour).toMatchObject({
-      country_code: 'GB',
+      country_code: 'GBR',
       website_url: 'https://harbour-gazette.example.test',
       subscription_uri: null,
       is_active: true,
@@ -110,7 +122,7 @@ describe('load-rss command', () => {
     ]);
     expect(feeds[0]).toMatchObject({
       type: 'rss-feed',
-      country_code: 'GB',
+      country_code: 'GBR',
       is_active_user: true,
     });
 
