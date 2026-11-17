@@ -1,6 +1,6 @@
 # Trademark policy
 
-"Mera", "Mera News", "Mera Protocol" and the Mera logos are trademarks of Mera Labs B.V.
+"Mera", "Mera News", "Mera Protocol" and the Mera logos are trademarks of Mera Labs B.V., a company based in Amsterdam, the Netherlands.
 
 The GNU Affero General Public License covers the code in this repository. It does not cover these names or logos.
 
