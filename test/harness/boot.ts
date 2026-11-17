@@ -27,7 +27,7 @@ import { StoryKeyIndexService } from '../../apps/mera-server-async/src/modules/s
 import { DataRetentionSweepProcessor } from '../../apps/mera-server-async/src/modules/data-retention/processor-data-retention-sweep/data-retention-sweep.processor';
 
 /** The processor that consumes each queue. */
-const PROCESSORS: Record<QueueName, Type<{ process(job: Job): Promise<unknown> }>> = {
+export const PROCESSORS: Partial<Record<QueueName, Type<{ process(job: Job): Promise<unknown> }>>> = {
   [QueueName.NEWS_SYNC_FANOUT]: NewsSyncFanoutProcessor,
   [QueueName.LOAD_RSS_FEED]: LoadRSSFeedProcessor,
   [QueueName.TRANSLATE_ARTICLE]: TranslateArticleProcessor,
@@ -121,12 +121,20 @@ export interface Harness {
  * from global-setup, a recorder per queue, no BullMQ worker, and memory
  * stand-ins for both Redis caches. Mirrors main.ts's pipe and filter.
  */
-export async function bootAsyncApp(): Promise<Harness> {
+export async function bootAsyncApp({
+  module = MeraServerAsyncModule,
+  processors = {},
+}: {
+  /** The root Nest module to boot. */
+  module?: Type<unknown>;
+  /** Processors merged over the built-in map when `runJob` looks up a queue. */
+  processors?: typeof PROCESSORS;
+} = {}): Promise<Harness> {
   const queues = Object.fromEntries(
     Object.values(QueueName).map((name) => [name, new QueueRecorder(name)]),
   ) as Record<QueueName, QueueRecorder>;
 
-  let builder = Test.createTestingModule({ imports: [MeraServerAsyncModule] })
+  let builder = Test.createTestingModule({ imports: [module] })
     // No worker may open a Redis connection.
     .overrideProvider(BullRegistrar)
     .useValue({ onModuleInit: () => undefined })
@@ -147,8 +155,11 @@ export async function bootAsyncApp(): Promise<Harness> {
 
   const connection = app.get<Connection>(getConnectionToken());
 
-  const runJob = (queue: QueueName, data: unknown, opts?: JobsOptions) =>
-    app.get(PROCESSORS[queue], { strict: false }).process(fakeJob(queue, data, opts));
+  const runJob = (queue: QueueName, data: unknown, opts?: JobsOptions) => {
+    const processor = { ...PROCESSORS, ...processors }[queue];
+    if (!processor) throw new Error(`No processor registered for queue ${queue}`);
+    return app.get(processor, { strict: false }).process(fakeJob(queue, data, opts));
+  };
 
   const drain = async (queue: QueueName) => {
     let ran = 0;
