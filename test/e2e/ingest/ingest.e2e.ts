@@ -25,6 +25,13 @@ const feeds = [
 ];
 const expectedLinks = feeds.flatMap((f) => f.links);
 
+// Fixture dates are relative to the run, so the load stage's freshness window
+// never ages them out: {{HOURS_AGO:n}} becomes an RFC 822 date n hours ago.
+const withRunDates = (xml: string) =>
+  xml.replace(/\{\{HOURS_AGO:(\d+)\}\}/g, (_m, hours: string) =>
+    new Date(Date.now() - Number(hours) * 3_600_000).toUTCString(),
+  );
+
 describe('ingest end to end', () => {
   let app: ChildProcess;
   let appLog = '';
@@ -40,7 +47,7 @@ describe('ingest end to end', () => {
         return;
       }
       res.writeHead(200, { 'content-type': 'application/rss+xml' });
-      res.end(readFileSync(join(__dirname, 'fixtures', feed.file)));
+      res.end(withRunDates(readFileSync(join(__dirname, 'fixtures', feed.file), 'utf8')));
     });
     await new Promise<void>((ok) => feedServer.listen(0, '127.0.0.1', ok));
     const feedPort = (feedServer.address() as { port: number }).port;
@@ -51,7 +58,7 @@ describe('ingest end to end', () => {
       const now = new Date();
       const publisher = await db.collection('news-publisher').insertOne({
         name: feed.publisher,
-        country_code: 'US',
+        country_code: 'USA',
         country_name: 'United States',
         is_active: true,
         createdAt: now,
@@ -62,7 +69,8 @@ describe('ingest end to end', () => {
         feed_url: `http://127.0.0.1:${feedPort}/${feed.file}`,
         type: 'rss-feed',
         feed_language_code: 'en',
-        country_code: 'US',
+        // Alpha-3, as the feed-list import stores it.
+        country_code: 'USA',
         country_name: 'United States',
         category: 'general',
         newsPublisherId: publisher.insertedId,

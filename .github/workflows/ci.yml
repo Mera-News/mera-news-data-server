@@ -14,8 +14,13 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # mongod binary for the in-memory replica set (version pinned in test/harness/global-setup.ts)
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/mongodb-binaries
+          key: mongodb-binaries-8.2.6-${{ runner.os }}
       - run: npm test
-      - run: npm run test:integration
+      - run: npm run test:integration -- --maxWorkers=2
 
   build:
     runs-on: ubuntu-latest
@@ -40,11 +45,8 @@ jobs:
           DO_NOT_TRACK: "1"
         ports:
           - 27017:27017
-        options: >-
-          --health-cmd "mongosh --quiet --eval 'db.runCommand({ping:1})'"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 30
+        # No health-cmd: the image ships its own HEALTHCHECK, which the runner
+        # waits on before the steps start.
       redis:
         image: redis:7.2-alpine
         ports:
