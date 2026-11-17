@@ -1,0 +1,23 @@
+{
+  "model": "jina-embeddings-v5-text-nano",
+  "task": "text-matching",
+  "variant": "centroid",
+  "excludedRoots": [
+    "/Adult",
+    "/Online Communities"
+  ],
+  "classifier": "flat",
+  "beam": {
+    "roots": 2,
+    "beam": 2
+  },
+  "levels": [
+    1
+  ],
+  "gate": {
+    "1": {
+      "margin": 0.0125,
+      "floor": 0.66
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "hammingBar": 32,
+  "windowS": 86400,
+  "exclusion": "source",
+  "minTextChars": 120,
+  "provisional": false
+}
