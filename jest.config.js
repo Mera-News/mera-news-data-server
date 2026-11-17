@@ -23,5 +23,16 @@ module.exports = {
       roots: ['<rootDir>/apps/', '<rootDir>/libs/'],
       testRegex: '.*\\.spec\\.ts$',
     },
+    {
+      ...base,
+      displayName: 'integration',
+      roots: ['<rootDir>/test/integration/'],
+      testRegex: '.*\\.spec\\.ts$',
+      globalSetup: '<rootDir>/test/harness/global-setup.ts',
+      globalTeardown: '<rootDir>/test/harness/global-teardown.ts',
+      setupFiles: ['<rootDir>/test/harness/setup-env.ts'],
+      setupFilesAfterEnv: ['<rootDir>/test/harness/msw.ts'],
+      testTimeout: 60_000,
+    },
   ],
 };
