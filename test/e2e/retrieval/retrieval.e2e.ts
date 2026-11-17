@@ -1,12 +1,7 @@
 import { ChildProcess, spawn } from 'node:child_process';
 import { join, resolve } from 'node:path';
-import { MongoClient, type Db, type Document } from 'mongodb';
-import mongoose, {
-  Schema,
-  type Connection,
-  type Model,
-  type Types,
-} from 'mongoose';
+import { MongoClient, type Db } from 'mongodb';
+import mongoose, { Schema, type Connection, type Types } from 'mongoose';
 import { createClient } from 'redis';
 import indexes from '../../harness/atlas-search-fake.indexes.json';
 import { installAtlasSearchFake } from '../../harness/atlas-search-fake';
@@ -85,7 +80,6 @@ describe('retrieval end to end', () => {
   let mongo: MongoClient;
   let db: Db;
   let connection: Connection;
-  let articles: Model<Document>;
   let redis: ReturnType<typeof createClient>;
   let app: ChildProcess;
   let appLog = '';
@@ -152,11 +146,6 @@ describe('retrieval end to end', () => {
     mongo = await MongoClient.connect(uri);
     db = mongo.db();
     connection = await mongoose.createConnection(uri).asPromise();
-    articles = connection.model(
-      'E2eArticle',
-      new Schema({}, { strict: false }),
-      'news-article',
-    );
     redis = createClient({ url: process.env.REDIS_URL });
     await redis.connect();
 
@@ -294,6 +283,11 @@ describe('retrieval end to end', () => {
       { $addFields: { score: { $meta: 'vectorSearchScore' } } },
       { $project: { _id: 1, score: 1 } },
     ];
+    const articles = connection.model(
+      'E2eArticle',
+      new Schema({}, { strict: false }),
+      'news-article',
+    );
     const fake = installAtlasSearchFake();
     let fromFake: ScoredRow[];
     try {
