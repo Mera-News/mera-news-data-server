@@ -8,6 +8,8 @@ import {
   seedSource,
 } from '../support/fixtures';
 
+const STABLE_ID = 'documents-stable-cluster';
+
 describe('news API documents', () => {
   let api: NewsApi;
   let variables: Record<string, Record<string, unknown>>;
@@ -15,6 +17,9 @@ describe('news API documents', () => {
 
   beforeAll(async () => {
     api = await bootNewsApi();
+    // The per-worker database is shared across suites; an edition left behind
+    // would collide on the unique scopeKey.
+    await api.resetDb();
     const publisher = await seedPublisher(api.connection, {
       country_code: 'NLD',
     });
@@ -23,7 +28,7 @@ describe('news API documents', () => {
       newsPublisherId: publisher,
     });
     const id = await seedArticle(api.connection, { source });
-    await seedCluster(api.connection, [id]);
+    await seedCluster(api.connection, [id], { stableClusterId: STABLE_ID });
     await seedHeadlineEdition(api.connection, 'NLD', [id]);
     articleId = String(id);
     const countryCode = 'NLD';
@@ -95,5 +100,29 @@ describe('news API documents', () => {
       expect(row._id).toBe(articleId);
       expect(row.article_url).toMatch(/^https:\/\/example\.test\//);
     }
+  });
+
+  it('resolves the seeded cluster on hydration and on the story context', async () => {
+    const hydrated = await api.gql<{
+      articlesForTopicsByIds: {
+        articles: { clusters: { stableClusterId: string | null }[] }[];
+      };
+    }>(ADAPTER_DOCUMENTS.MeraHydrateArticles, variables.MeraHydrateArticles);
+    expect(
+      hydrated.body.data?.articlesForTopicsByIds.articles[0].clusters.map(
+        (c) => c.stableClusterId,
+      ),
+    ).toEqual([STABLE_ID]);
+
+    const related = await api.gql<{
+      newsClusterForArticle: {
+        stableClusterId: string;
+        clusterSize: number;
+      } | null;
+    }>(ADAPTER_DOCUMENTS.MeraRelatedArticles, variables.MeraRelatedArticles);
+    expect(related.body.data?.newsClusterForArticle).toMatchObject({
+      stableClusterId: STABLE_ID,
+      clusterSize: 1,
+    });
   });
 });
