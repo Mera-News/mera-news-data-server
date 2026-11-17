@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json.schemastore.org/nest-cli",
+  "collection": "@nestjs/schematics",
+  "sourceRoot": "apps/mera-server-async/src",
+  "compilerOptions": {
+    "deleteOutDir": true,
+    "webpack": true,
+    "tsConfigPath": "apps/mera-server-async/tsconfig.app.json"
+  },
+  "monorepo": true,
+  "root": "apps/mera-server-async",
+  "projects": {
+    "mera-scripts": {
+      "type": "application",
+      "root": "apps/mera-scripts",
+      "entryFile": "main",
+      "sourceRoot": "apps/mera-scripts/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/mera-scripts/tsconfig.app.json"
+      }
+    },
+    "mera-models": {
+      "type": "library",
+      "root": "libs/mera-models",
+      "entryFile": "index",
+      "sourceRoot": "libs/mera-models/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/mera-models/tsconfig.lib.json"
+      }
+    },
+    "mera-news-core": {
+      "type": "library",
+      "root": "libs/mera-news-core",
+      "entryFile": "index",
+      "sourceRoot": "libs/mera-news-core/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/mera-news-core/tsconfig.lib.json"
+      }
+    },
+    "mera-server-async": {
+      "type": "application",
+      "root": "apps/mera-server-async",
+      "entryFile": "main",
+      "sourceRoot": "apps/mera-server-async/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/mera-server-async/tsconfig.app.json"
+      }
+    },
+    "mera-server-news-api": {
+      "type": "application",
+      "root": "apps/mera-server-news-api",
+      "entryFile": "main",
+      "sourceRoot": "apps/mera-server-news-api/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/mera-server-news-api/tsconfig.app.json"
+      }
+    },
+    "mera-shared": {
+      "type": "library",
+      "root": "libs/mera-shared",
+      "entryFile": "index",
+      "sourceRoot": "libs/mera-shared/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/mera-shared/tsconfig.lib.json"
+      }
+    }
+  }
+}
