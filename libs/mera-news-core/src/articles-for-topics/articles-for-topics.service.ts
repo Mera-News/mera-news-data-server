@@ -29,7 +29,11 @@ import {
   TopicArticleLink,
   TopicArticleLinkDocument,
 } from '@mera/models/models/topic-article-link.model';
-import { orderRelatedArticles, VECTOR_RETRIEVAL_MIN_SCORE } from '@mera/shared';
+import { orderRelatedArticles } from '@mera/shared';
+import {
+  isCalibratedEmbedding,
+  vectorMinScore,
+} from '@mera/shared/embedding-provider/embedding-config';
 import type {
   RelatedSortable,
   RelatedSortMode,
@@ -122,10 +126,9 @@ const DEFAULT_SLOW_RESOLVE_LOG_MS = 5_000;
 // healthy topics separate cleanly at ~0.785; EU-AI-Act-class topics still keep
 // ≥40 candidates above 0.78. 0.76 was nearly inert (top-100 ANN floors already
 // sit at 0.745–0.754), so it trimmed almost nothing.
-// The value lives in @mera/shared (VECTOR_RETRIEVAL_MIN_SCORE) so this
+// The default lives in @mera/shared (VECTOR_RETRIEVAL_MIN_SCORE) so this
 // site, news-cluster.service.ts, and the async data-retrieval search stay in
-// lockstep.
-const MIN_SCORE = VECTOR_RETRIEVAL_MIN_SCORE;
+// lockstep; VECTOR_MIN_SCORE overrides it.
 /**
  * Ceiling on `getRecentArticleCount(since)`. `news-article` is swept at 48h
  * (RETENTION_RULES), so no lookback beyond it can be answered truthfully — an
@@ -465,6 +468,9 @@ export class ArticlesForTopicsService {
   private readonly vectorSearchConcurrency: number;
   // TTL for a resolved-to-nothing topic. See DEFAULT_EMPTY_CACHE_TTL_MS.
   private readonly emptyCacheTtlMs: number;
+  // False off the tuned embedding model, where scores are not comparable.
+  private readonly scoresCalibrated: boolean;
+  private readonly minScore: number;
 
   constructor(
     @InjectModel(NewsArticle.name)
@@ -489,6 +495,8 @@ export class ArticlesForTopicsService {
     @Inject(STORY_NAMES_GENERATOR)
     private readonly storyNames: StoryNamesGenerator,
   ) {
+    this.scoresCalibrated = isCalibratedEmbedding(this.configService);
+    this.minScore = vectorMinScore(this.configService);
     this.jinaQueryBatch =
       Number(
         this.configService.get<string | number>(
@@ -1155,7 +1163,9 @@ export class ArticlesForTopicsService {
         // multiplies positive topic weights by smoothstep(v, 0.78, 0.90)
         // whenever v is non-null, and smoothstep(0, …) === 0 — which zeroed the
         // topic weight of every warm-path article. See PersonaMatchMeta.
-        vectorScore: e.score ?? null,
+        // Off the tuned Jina model the client's score curve would mis-weight
+        // topics, so no score is sent.
+        vectorScore: this.scoresCalibrated ? (e.score ?? null) : null,
         textScore: null, // ALWAYS null in v1.
         stableClusterId: this.largestClusterStableId(e.clusterIds, clusterMeta),
       }));
@@ -1758,7 +1768,10 @@ export class ArticlesForTopicsService {
       // the ANN stage. Insecure rows are ~1.3% of the corpus, so the candidate
       // loss from filtering after the fact is negligible.
       {
-        $match: { ...SERVABLE_URL_SECURITY_FILTER, score: { $gte: MIN_SCORE } },
+        $match: {
+          ...SERVABLE_URL_SECURITY_FILTER,
+          score: { $gte: this.minScore },
+        },
       },
       { $limit: VECTOR_SEARCH_LIMIT },
       { $project: HEAVY_ARTICLE_FIELDS_EXCLUSION },
