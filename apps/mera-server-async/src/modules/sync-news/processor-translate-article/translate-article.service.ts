@@ -190,10 +190,15 @@ export class TranslateArticleService {
       // A short kanji-only title is under CLD3's minBytes, so the script
       // fallback reads it as `zh`; a Japanese description overrules that.
       const t = this.detector.detect(title);
-      const detected =
+      const perField =
         t === 'zh' && description && this.detector.detect(description) === 'ja'
           ? 'ja'
           : t || this.detector.detect(description) || null;
+      // Title and description are each tested first; under the detector's
+      // minimum length both can come back empty, so the two are then tested
+      // together (the text the feed-level detector uses).
+      const detected =
+        perField ?? this.detector.detect(`${title} ${description}`) ?? null;
 
       if (detected && detected.startsWith('en')) {
         passthrough++;
