@@ -3,6 +3,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { CacheModule } from '@nestjs/cache-manager';
 import { MongooseModule } from '@nestjs/mongoose';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
 import { join } from 'path';
@@ -16,6 +17,7 @@ import {
   type CacheStore,
   normalizeCacheNamespace,
 } from '@mera/shared';
+import { readBool, readText } from '@mera/shared/config/env-choice';
 import { ModelsNewsModule } from '@mera/models/models/models-news.module';
 import {
   ARTICLE_QUOTA,
@@ -27,13 +29,28 @@ import {
   API_KEY_VERIFIER,
   ApiKeyGuard,
   EnvApiKeyVerifier,
+  OpenApiKeyVerifier,
 } from './guards/api-key.guard';
+import { GqlThrottlerGuard } from './guards/gql-throttler.guard';
 import {
   InternalNewsPublisherFieldResolver,
   InternalNewsResolver,
 } from './modules/internal-news.resolver';
 
 const DEFAULT_CACHE_TTL_MS = 3_600_000;
+const DEFAULT_OPEN_RATE_LIMIT = 60;
+
+function openRateLimit(config: ConfigService): number {
+  const text = readText(config, 'NEWS_API_OPEN_RATE_LIMIT');
+  if (text === '') return DEFAULT_OPEN_RATE_LIMIT;
+  const n = Number(text);
+  if (!Number.isInteger(n) || n <= 0) {
+    throw new Error(
+      `NEWS_API_OPEN_RATE_LIMIT="${text}" must be a positive whole number`,
+    );
+  }
+  return n;
+}
 
 /**
  * `mera-server-news-api` — the INTERNAL news surface.
@@ -151,6 +168,17 @@ const DEFAULT_CACHE_TTL_MS = 3_600_000;
       }),
       inject: [ConfigService],
     }),
+    // Registered always, active only in open mode (see the verifier below).
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => {
+        const open = readBool(config, 'NEWS_API_OPEN', false);
+        return {
+          throttlers: [{ ttl: 60_000, limit: openRateLimit(config) }],
+          skipIf: () => !open,
+        };
+      },
+    }),
     // NEWS SCHEMAS ONLY. See the class comment — do not swap this for
     // `MeraModelsModule`.
     ModelsNewsModule,
@@ -179,8 +207,18 @@ const DEFAULT_CACHE_TTL_MS = 3_600_000;
     InternalNewsPublisherFieldResolver,
     // Global, so a new resolver is protected by default rather than by
     // remembering to decorate it. Opt out with `@SkipApiKey()`.
-    { provide: API_KEY_VERIFIER, useClass: EnvApiKeyVerifier },
+    // Open mode is for one reader's own install: one shared principal, so
+    // the per-IP limit is the only per-caller bound.
+    {
+      provide: API_KEY_VERIFIER,
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) =>
+        readBool(config, 'NEWS_API_OPEN', false)
+          ? new OpenApiKeyVerifier()
+          : new EnvApiKeyVerifier(config),
+    },
     { provide: APP_GUARD, useClass: ApiKeyGuard },
+    { provide: APP_GUARD, useClass: GqlThrottlerGuard },
   ],
 })
 export class AppModule {}

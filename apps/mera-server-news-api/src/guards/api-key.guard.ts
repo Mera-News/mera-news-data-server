@@ -141,6 +141,20 @@ export class EnvApiKeyVerifier implements ApiKeyVerifier {
 }
 
 /**
+ * Open mode: every caller is the same anonymous principal and nothing is
+ * checked, so a reader's own install needs no key. The presented value is
+ * never read.
+ */
+@Injectable()
+export class OpenApiKeyVerifier implements ApiKeyVerifier {
+  verify(): Promise<string | null> {
+    return Promise.resolve(OPEN_PRINCIPAL);
+  }
+}
+
+const OPEN_PRINCIPAL = 'anonymous';
+
+/**
  * The principal of the shared key. Never read under `NoopArticleQuota`; a
  * constant, so no caller-supplied value can be smuggled in as an identity.
  */

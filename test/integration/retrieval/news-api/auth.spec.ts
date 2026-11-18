@@ -51,3 +51,88 @@ describe('news API with no key configured', () => {
     }
   });
 });
+
+describe('news API in open mode', () => {
+  let api: NewsApi;
+
+  beforeAll(async () => {
+    api = await bootNewsApi({
+      env: { MERA_NEWS_API_KEY: '', NEWS_API_OPEN: 'true' },
+    });
+  });
+  afterAll(() => api.close());
+
+  it('answers both app operations with no key', async () => {
+    const persona = await api.gql(
+      `{ articleIdsForPersona(query: { topics: [], limitPerTopic: 5 }) { topicResults { topicText } } }`,
+      {},
+      null,
+    );
+    const byIds = await api.gql(
+      `{ articlesForTopicsByIds(articleIds: []) { dailyLimitReached } }`,
+      {},
+      null,
+    );
+
+    for (const res of [persona, byIds]) {
+      expect(res.status).toBe(200);
+      expect(res.body.errors).toBeUndefined();
+    }
+  });
+});
+
+describe('news API with NEWS_API_OPEN set to something else', () => {
+  it('fails to boot, naming the allowed values', async () => {
+    await expect(bootNewsApi({ env: { NEWS_API_OPEN: '1' } })).rejects.toThrow(
+      'true or false',
+    );
+  });
+});
+
+describe('news API open mode rate limit', () => {
+  let api: NewsApi;
+
+  beforeAll(async () => {
+    api = await bootNewsApi({
+      env: {
+        MERA_NEWS_API_KEY: '',
+        NEWS_API_OPEN: 'true',
+        NEWS_API_OPEN_RATE_LIMIT: '3',
+      },
+    });
+  });
+  afterAll(() => api.close());
+
+  it('refuses the 4th request in a minute and keeps /health open', async () => {
+    const results = [];
+    for (let i = 0; i < 3; i++)
+      results.push(await api.gql(COUNTRIES, {}, null));
+    expect(results.map((r) => r.body.errors)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ]);
+
+    const refused = await api
+      .http()
+      .post('/graphql')
+      .send({ query: COUNTRIES, variables: {} });
+    // GraphQL keeps HTTP 200 for an error inside execution; the code and the
+    // header carry the refusal.
+    expect(refused.status).toBe(200);
+    expect(refused.headers['retry-after']).toMatch(/^[0-9]+$/);
+    const body = refused.body as {
+      errors?: { extensions?: { code?: string } }[];
+    };
+    expect(body.errors?.[0].extensions?.code).toBe('TOO_MANY_REQUESTS');
+    await api.http().get('/health').expect(200);
+  });
+
+  it('rejects a limit that is not a positive whole number', async () => {
+    await expect(
+      bootNewsApi({
+        env: { NEWS_API_OPEN: 'true', NEWS_API_OPEN_RATE_LIMIT: 'lots' },
+      }),
+    ).rejects.toThrow('NEWS_API_OPEN_RATE_LIMIT');
+  });
+});

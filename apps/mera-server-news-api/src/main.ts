@@ -5,6 +5,7 @@ import helmet from 'helmet';
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { Logger } from 'nestjs-pino';
+import { readBool, readText } from '@mera/shared/config/env-choice';
 import { AppModule } from './app.module';
 
 /**
@@ -28,7 +29,12 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
   const isProduction = configService.get<string>('NODE_ENV') === 'production';
 
-  if (!configService.get<string>('MERA_NEWS_API_KEY')) {
+  const open = readBool(configService, 'NEWS_API_OPEN', false);
+  if (open) {
+    logger.warn(
+      'NEWS_API_OPEN=true: the news API answers without a key. Bind it to 127.0.0.1 with NEWS_API_HOST or put a proxy with its own limits in front. Anyone who reaches it can spend your embedding quota.',
+    );
+  } else if (!configService.get<string>('MERA_NEWS_API_KEY')) {
     throw new Error(
       'MERA_NEWS_API_KEY is not set — refusing to start. This service has no ' +
         'other authentication, so booting without it would serve the news ' +
@@ -42,7 +48,8 @@ async function bootstrap() {
     configService.get<number>('PORT') ??
     configService.get<number>('NEWS_API_PORT', 3002);
 
-  await app.listen(port);
+  const host = readText(configService, 'NEWS_API_HOST');
+  await (host ? app.listen(port, host) : app.listen(port));
   logger.log(`Internal news API is running on port ${port}`);
 }
 void bootstrap();
