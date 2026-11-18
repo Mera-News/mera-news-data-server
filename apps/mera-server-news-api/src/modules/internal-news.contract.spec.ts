@@ -45,13 +45,13 @@ import { ADAPTER_DOCUMENTS } from './adapter-documents';
 /**
  * Root fields this service must NOT expose. Everything here is user-side or a
  * write, and the whole point of a separate internal service is that one leaked
- * API key cannot reach any of it.
+ * API key cannot reach any of it. `articlesForStories` is not listed: the news
+ * client sends it, and here it is the same unmetered read as its twin.
  */
 const FORBIDDEN_ROOT_FIELDS = [
   'userBilling',
   'userPersonaByUserId',
   'unblockRequestStatus',
-  'articlesForStories',
 ];
 
 describe('internal news API — wire contract with the news client', () => {

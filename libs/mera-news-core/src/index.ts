@@ -31,6 +31,7 @@ export {
   ArticleSummary,
   ClusterMembership,
 } from './articles-for-topics/dto/articles-for-topics.dto';
+export { ArticleClusterMemberships } from './news-cluster/dto/article-cluster-memberships.dto';
 export {
   PersonaQueryInput,
   PersonaQueryResult,

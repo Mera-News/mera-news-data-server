@@ -1,4 +1,5 @@
 import { BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { GraphQLError } from 'graphql';
 import {
   Args,
   Context,
@@ -14,15 +15,20 @@ import { NewsCluster } from '@mera/models/models/news-cluster.model';
 import { NewsPublisher } from '@mera/models/models/news-publisher.model';
 import { PublicationSource } from '@mera/models/models/publication-source.model';
 import {
+  ArticleClusterMemberships,
   ArticleSummary,
   ArticlesForPublicationSourceResponse,
   ArticlesForTopicsByIdsResponse,
   ArticlesForTopicsService,
+  DEFAULT_HEADLINE_VIEW_WINDOW_HOURS,
   DEFAULT_PAGE_SIZE,
+  HEADLINE_VIEW_WINDOWS_HOURS,
   NewsArticleService,
   NewsClusterService,
   NewsPublisherService,
   NewsPublishersResponse,
+  PublicationSourcesForPublisherResponse,
+  SearchPublishersResponse,
   HeadlineScope,
   PersonaQueryInput,
   PersonaQueryResult,
@@ -62,8 +68,8 @@ import type { ApiKeyRequest } from '../guards/api-key.guard';
  * is frozen and test-enforced on its side.
  *
  * `articlesForTopicsByIds` is therefore UNMETERED here (`NoopArticleQuota`),
- * which is why there is no `articlesForStories` twin: on this surface the two
- * would be the same query. Quota is the caller's job.
+ * and `articlesForStories` is the same read under its other name, served
+ * because the client sends it. Quota is the caller's job.
  */
 @Resolver()
 export class InternalNewsResolver {
@@ -177,6 +183,28 @@ export class InternalNewsResolver {
     );
   }
 
+  @Query(() => ArticlesForTopicsByIdsResponse, {
+    name: 'articlesForStories',
+    description:
+      'Hydrate articles by id for followed ("tracked") stories. Same payload as articlesForTopicsByIds. dailyLimitReached is always false and resetAt is always absent. Capped at 50 ids per request.',
+  })
+  async articlesForStories(
+    @Args('articleIds', { type: () => [ID] }) articleIds: string[],
+    @Context('req') req: ApiKeyRequest,
+  ): Promise<ArticlesForTopicsByIdsResponse> {
+    if (articleIds.length > MAX_ARTICLE_IDS_PER_REQUEST) {
+      throw new BadRequestException(
+        `Too many article ids: ${articleIds.length} exceeds the maximum of ${MAX_ARTICLE_IDS_PER_REQUEST}`,
+      );
+    }
+    const principal = req?.apiPrincipal;
+    if (!principal) throw new UnauthorizedException('Invalid API key');
+    return this.articlesForTopicsService.getArticlesForStories(
+      articleIds,
+      principal,
+    );
+  }
+
   // ───────────────────────────────────────────────────────────────────────────
   // Article reads  (adapter: getArticle, listArticles)
   // ───────────────────────────────────────────────────────────────────────────
@@ -195,22 +223,56 @@ export class InternalNewsResolver {
 
   @Query(() => TopHeadlinesForCountryResponse, {
     name: 'topHeadlinesForCountry',
+    description:
+      'A country\'s precomputed, cluster-deduplicated top headlines (each big story appears once), paged over the materialized edition. A null or "GLOBAL" countryCode spans all countries. windowHours ranks the stories most covered in the last 6, 12, 24 (default) or 48 hours. Falls back to the live path (editionBuiltAt: null) when no edition exists yet.',
   })
   async topHeadlinesForCountry(
-    @Args('countryCode', { type: () => String, nullable: true })
+    @Args('countryCode', {
+      type: () => String,
+      nullable: true,
+      description: 'ISO country code, or null/"GLOBAL" for all countries',
+    })
     countryCode: string | undefined,
     @Args('first', {
       type: () => Int,
       nullable: true,
       defaultValue: DEFAULT_PAGE_SIZE,
+      description: 'Number of items to fetch',
     })
     first?: number,
-    @Args('after', { type: () => String, nullable: true }) after?: string,
+    @Args('after', {
+      type: () => String,
+      nullable: true,
+      description: 'Cursor to fetch items after',
+    })
+    after?: string,
+    @Args('windowHours', {
+      type: () => Int,
+      nullable: true,
+      defaultValue: DEFAULT_HEADLINE_VIEW_WINDOW_HOURS,
+      description:
+        'Rank by coverage in the last 6, 12, 24 or 48 hours. Any other value is BAD_WINDOW.',
+    })
+    windowHours?: number,
   ): Promise<TopHeadlinesForCountryResponse> {
+    if (countryCode && countryCode.length > MAX_COUNTRY_CODE_LENGTH) {
+      throw new BadRequestException(
+        `countryCode exceeds the maximum length of ${MAX_COUNTRY_CODE_LENGTH} characters`,
+      );
+    }
+    assertCursorLength(after);
+    const window = windowHours ?? DEFAULT_HEADLINE_VIEW_WINDOW_HOURS;
+    if (!(HEADLINE_VIEW_WINDOWS_HOURS as readonly number[]).includes(window)) {
+      throw new GraphQLError(
+        `windowHours must be one of ${HEADLINE_VIEW_WINDOWS_HOURS.join(', ')}`,
+        { extensions: { code: 'BAD_WINDOW' } },
+      );
+    }
     return this.topHeadlinesService.topHeadlinesForCountry(
       countryCode,
       first ?? DEFAULT_PAGE_SIZE,
       after,
+      window,
     );
   }
 
@@ -299,6 +361,22 @@ export class InternalNewsResolver {
     return this.newsClusterService.newsClusterForArticle(articleId);
   }
 
+  @Query(() => [ArticleClusterMemberships], {
+    name: 'clusterMembershipsForArticles',
+    description:
+      'Cluster memberships for up to 500 article ids, from the newest complete clustering generation. An article with no links returns clusters: []; one whose links are all mid-swap is omitted. Response order is not request order.',
+  })
+  async clusterMembershipsForArticles(
+    @Args('articleIds', { type: () => [ID] }) articleIds: string[],
+  ): Promise<ArticleClusterMemberships[]> {
+    if (articleIds.length > MAX_MEMBERSHIP_ARTICLE_IDS) {
+      throw new BadRequestException(
+        `Too many article ids: ${articleIds.length} exceeds the maximum of ${MAX_MEMBERSHIP_ARTICLE_IDS}`,
+      );
+    }
+    return this.newsClusterService.clusterMembershipsForArticles(articleIds);
+  }
+
   // ───────────────────────────────────────────────────────────────────────────
   // Catalogue  (adapter: listPublishers, listCountryCodes, countArticlesSince)
   // ───────────────────────────────────────────────────────────────────────────
@@ -319,6 +397,57 @@ export class InternalNewsResolver {
       countryCode,
       first ?? DEFAULT_PAGE_SIZE,
       after,
+    );
+  }
+
+  @Query(() => SearchPublishersResponse, { name: 'searchPublishers' })
+  async searchPublishers(
+    @Args('query', { type: () => String })
+    query: string,
+    @Args('first', {
+      type: () => Int,
+      nullable: true,
+      defaultValue: DEFAULT_PAGE_SIZE,
+      description: 'Number of items to fetch',
+    })
+    first?: number,
+    @Args('after', {
+      type: () => String,
+      nullable: true,
+      description: 'Cursor to fetch items after',
+    })
+    after?: string,
+  ): Promise<SearchPublishersResponse> {
+    // Tighter than the service's own bound: strangers can reach this surface.
+    const length = query.trim().length;
+    if (length < MIN_SEARCH_QUERY_LENGTH || length > MAX_SEARCH_QUERY_LENGTH) {
+      throw new BadRequestException(
+        `query must be ${MIN_SEARCH_QUERY_LENGTH} to ${MAX_SEARCH_QUERY_LENGTH} characters`,
+      );
+    }
+    const size = first ?? DEFAULT_PAGE_SIZE;
+    if (size < 1 || size > MAX_SEARCH_PAGE_SIZE) {
+      throw new BadRequestException(
+        `first must be between 1 and ${MAX_SEARCH_PAGE_SIZE}`,
+      );
+    }
+    assertCursorLength(after);
+    return this.newsPublisherService.searchPublishers(query, size, after, {
+      maxTimeMS: SEARCH_MAX_TIME_MS,
+    });
+  }
+
+  @Query(() => PublicationSourcesForPublisherResponse, {
+    name: 'publicationSourcesForNewsPublisher',
+  })
+  async publicationSourcesForNewsPublisher(
+    @Args('publisherId', { type: () => ID })
+    publisherId: string,
+  ): Promise<PublicationSourcesForPublisherResponse> {
+    // An id that cannot name a publisher names no sources, not a server error.
+    if (!OBJECT_ID_HEX.test(publisherId)) return { publicationSources: [] };
+    return this.newsPublisherService.findPublicationSourcesForPublisher(
+      publisherId,
     );
   }
 
@@ -386,3 +515,22 @@ const MAX_LIMIT_PER_SCOPE = 25;
  * size. The adapter chunks at 50.
  */
 const MAX_ARTICLE_IDS_PER_REQUEST = 50;
+
+/** Same ceiling as the app-facing API: the app's feed window, with room. */
+const MAX_MEMBERSHIP_ARTICLE_IDS = 500;
+const MAX_COUNTRY_CODE_LENGTH = 8;
+const MAX_CURSOR_LENGTH = 512;
+const MIN_SEARCH_QUERY_LENGTH = 2;
+const MAX_SEARCH_QUERY_LENGTH = 64;
+const MAX_SEARCH_PAGE_SIZE = 50;
+/** The publisher search is the one unindexed scan on this surface. */
+const SEARCH_MAX_TIME_MS = 2000;
+const OBJECT_ID_HEX = /^[0-9a-fA-F]{24}$/;
+
+function assertCursorLength(after: string | null | undefined): void {
+  if (after && after.length > MAX_CURSOR_LENGTH) {
+    throw new BadRequestException(
+      `after exceeds the maximum length of ${MAX_CURSOR_LENGTH} characters`,
+    );
+  }
+}

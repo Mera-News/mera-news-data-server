@@ -158,6 +158,7 @@ export class NewsPublisherService {
     query: string,
     first: number = DEFAULT_PAGE_SIZE,
     after?: string,
+    opts?: { maxTimeMS?: number },
   ): Promise<SearchPublishersResponse> {
     const trimmed = (query ?? '').trim();
     if (trimmed.length < SEARCH_MIN_QUERY_LENGTH) {
@@ -174,6 +175,8 @@ export class NewsPublisherService {
     }
 
     const safeFirst = Math.max(1, first);
+    // Both scans are unindexed, so a caller that exposes this to strangers can bound them.
+    const scanOptions = opts?.maxTimeMS ? { maxTimeMS: opts.maxTimeMS } : {};
     const rx = new RegExp(escapeRegex(trimmed), 'i');
 
     // Source-side match: publications whose name or URL contains the query.
@@ -182,6 +185,7 @@ export class NewsPublisherService {
     };
     const sourceRefs = await this.publicationSourceModel
       .find(sourceMatch)
+      .setOptions(scanOptions)
       .select('newsPublisherId')
       .lean()
       .exec();
@@ -213,6 +217,7 @@ export class NewsPublisherService {
     const lowerQuery = trimmed.toLowerCase();
     const matches = await this.newsPublisherModel
       .find(matchQuery)
+      .setOptions(scanOptions)
       .select('name')
       .lean()
       .exec();

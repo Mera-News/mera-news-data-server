@@ -36,6 +36,13 @@ import {
   InternalNewsPublisherFieldResolver,
   InternalNewsResolver,
 } from './modules/internal-news.resolver';
+import { PublicSourceResolver } from './modules/public-source.resolver';
+import {
+  keepQueryLimitCode,
+  MAX_QUERY_FIELDS,
+  maxQueryDepth,
+  queryLimitsRule,
+} from './query-limits';
 
 const DEFAULT_CACHE_TTL_MS = 3_600_000;
 const DEFAULT_OPEN_RATE_LIMIT = 60;
@@ -165,6 +172,14 @@ export function openRateLimit(config: ConfigService): number {
             ? true
             : join(process.cwd(), 'apps/mera-server-news-api/src/schema.gql'),
         sortSchema: true,
+        // The schema is public (it is committed in this repo), and a client
+        // learns what a server offers by introspection, so it stays on.
+        introspection: true,
+        // Refused before any resolver runs, whatever the caller's key.
+        validationRules: [
+          queryLimitsRule(maxQueryDepth(configService), MAX_QUERY_FIELDS),
+        ],
+        formatError: keepQueryLimitCode,
         // ApiKeyGuard reads `req` from here. Without this the guard cannot see
         // the headers on a GraphQL request and rejects everything.
         context: ({ req, res }: { req: unknown; res: unknown }) => ({
@@ -211,6 +226,7 @@ export function openRateLimit(config: ConfigService): number {
   providers: [
     InternalNewsResolver,
     InternalNewsPublisherFieldResolver,
+    PublicSourceResolver,
     // Global, so a new resolver is protected by default rather than by
     // remembering to decorate it. Opt out with `@SkipApiKey()`.
     // Open mode is for one reader's own install: one shared principal, so
