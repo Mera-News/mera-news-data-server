@@ -1,5 +1,6 @@
 import fs from 'fs';
 import { Logger } from '@nestjs/common';
+import { Types } from 'mongoose';
 import { bootNewsApi, type NewsApi } from '../support/boot-news-api';
 
 const MARKER = 'zq7marker41';
@@ -130,6 +131,67 @@ describe('request text in the news API logs', () => {
       expect(valid.body.data?.placeSearch).toEqual([]);
       await api.gql(doc, { q: MARKER.repeat(6) });
       await api.gql(doc, { q: { text: MARKER } });
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    } finally {
+      capture.restore();
+    }
+
+    expect(
+      capture.lines.filter((l) => l.includes('"/graphql')).length,
+    ).toBeGreaterThanOrEqual(3);
+    expect(capture.lines.filter((l) => l.includes(MARKER))).toEqual([]);
+  });
+
+  it('logs no reader preference text for a valid related request, a too long one or a wrong type', async () => {
+    const capture = captureLogs();
+    const doc =
+      'query($id: ID!, $c: RelatedArticlesContextInput) { relatedArticlesPage(articleId: $id, context: $c) { articles { _id } } }';
+    const id = String(new Types.ObjectId());
+    try {
+      const valid = await api.gql<{
+        relatedArticlesPage: { articles: unknown[] };
+      }>(doc, {
+        id,
+        c: { subscribedPublications: [MARKER], appLanguageBase: MARKER },
+      });
+      // The resolver ran: a valid request answers a page, not a validation error.
+      expect(valid.body.errors).toBeUndefined();
+      expect(valid.body.data?.relatedArticlesPage.articles).toEqual([]);
+      const long = await api.gql(doc, {
+        id,
+        c: { subscribedPublications: [MARKER.repeat(6)] },
+      });
+      expect(long.body.errors?.[0].message).toMatch(/64/);
+      await api.gql(doc, {
+        id,
+        c: { subscribedPublications: { text: MARKER } },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    } finally {
+      capture.restore();
+    }
+
+    expect(
+      capture.lines.filter((l) => l.includes('"/graphql')).length,
+    ).toBeGreaterThanOrEqual(3);
+    expect(capture.lines.filter((l) => l.includes(MARKER))).toEqual([]);
+  });
+
+  it('logs no publication name for a valid profile request, a too long one or a wrong type', async () => {
+    const capture = captureLogs();
+    const doc =
+      'query($n: String, $cc: String) { publicationProfile(name: $n, countryCode: $cc) { newsPublisherId } }';
+    try {
+      const valid = await api.gql<{ publicationProfile: unknown }>(doc, {
+        n: MARKER,
+        cc: 'NLD',
+      });
+      // The resolver ran: an unknown name answers null, not an error.
+      expect(valid.body.errors).toBeUndefined();
+      expect(valid.body.data).toEqual({ publicationProfile: null });
+      const long = await api.gql(doc, { n: MARKER.repeat(19), cc: 'NLD' });
+      expect(long.body.errors?.[0].message).toMatch(/200/);
+      await api.gql(doc, { n: { text: MARKER }, cc: 'NLD' });
       await new Promise((resolve) => setTimeout(resolve, 200));
     } finally {
       capture.restore();

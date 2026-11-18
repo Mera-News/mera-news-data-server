@@ -1,5 +1,7 @@
 import { BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { GraphQLError } from 'graphql';
+import { assertKeysetCursor } from './cursor-guard';
 import {
   Args,
   Context,
@@ -38,7 +40,15 @@ import {
   CountryService,
   NewsServerStatus,
   PlaceService,
+  PublicationProfile,
+  PublicationProfileService,
+  PublisherArticleOrder,
+  RelatedArticlesContextInput,
+  RelatedArticlesPage,
+  RelatedSortModeEnum,
   ServerStatusService,
+  toGeoLanguageContext,
+  toSortMode,
 } from '@mera/news-core';
 import type { ApiKeyRequest } from '../guards/api-key.guard';
 
@@ -75,6 +85,9 @@ import type { ApiKeyRequest } from '../guards/api-key.guard';
  * and `articlesForStories` is the same read under its other name, served
  * because the client sends it. Quota is the caller's job.
  */
+/** Default page size for `relatedArticlesPage`; the ceiling is below. */
+const DEFAULT_RELATED_PAGE_SIZE = 10;
+
 @Resolver()
 export class InternalNewsResolver {
   constructor(
@@ -86,6 +99,7 @@ export class InternalNewsResolver {
     private readonly countryService: CountryService,
     private readonly placeService: PlaceService,
     private readonly serverStatusService: ServerStatusService,
+    private readonly publicationProfileService: PublicationProfileService,
   ) {}
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -296,6 +310,7 @@ export class InternalNewsResolver {
     first?: number,
     @Args('after', { type: () => String, nullable: true }) after?: string,
   ): Promise<ArticlesForPublicationSourceResponse> {
+    assertKeysetCursor(after);
     return this.newsArticleService.articlesForCountry(
       countryCode,
       first ?? DEFAULT_PAGE_SIZE,
@@ -305,6 +320,8 @@ export class InternalNewsResolver {
 
   @Query(() => ArticlesForPublicationSourceResponse, {
     name: 'articlesForPublisher',
+    description:
+      "A publisher's articles across all its feeds. Default order TOP_HEADLINES: last 24h sorted by largest cluster size. order NEWEST: newest first over 48h.",
   })
   async articlesForPublisher(
     @Args('newsPublisherId', { type: () => ID }) newsPublisherId: string,
@@ -315,7 +332,26 @@ export class InternalNewsResolver {
     })
     first?: number,
     @Args('after', { type: () => String, nullable: true }) after?: string,
+    @Args('order', {
+      type: () => PublisherArticleOrder,
+      nullable: true,
+      defaultValue: PublisherArticleOrder.TOP_HEADLINES,
+      description:
+        'TOP_HEADLINES (default) keeps the original view. NEWEST is newest first across all feeds.',
+    })
+    order?: PublisherArticleOrder,
   ): Promise<ArticlesForPublicationSourceResponse> {
+    assertKeysetCursor(after);
+    if (order === PublisherArticleOrder.NEWEST) {
+      return this.newsArticleService.articlesForPublisher(
+        newsPublisherId,
+        first ?? DEFAULT_PAGE_SIZE,
+        after,
+        'NEWEST',
+      );
+    }
+    // The default path calls the service exactly as it always has, so the
+    // original ordering cannot drift through this argument.
     return this.newsArticleService.articlesForPublisher(
       newsPublisherId,
       first ?? DEFAULT_PAGE_SIZE,
@@ -337,6 +373,7 @@ export class InternalNewsResolver {
     first?: number,
     @Args('after', { type: () => String, nullable: true }) after?: string,
   ): Promise<ArticlesForPublicationSourceResponse> {
+    assertKeysetCursor(after);
     return this.newsArticleService.articlesForPublicationSource(
       publicationSourceId,
       first ?? DEFAULT_PAGE_SIZE,
@@ -358,6 +395,88 @@ export class InternalNewsResolver {
       articleId,
       stableClusterId,
     );
+  }
+
+  /**
+   * One ordered page of an article's sibling coverage.
+   *
+   * `context` carries the reader's geo/language signals, which the RELEVANCE
+   * ordering needs. It exists only to order this response: it is length-capped
+   * here, never logged, and never part of any cache key.
+   */
+  @Query(() => RelatedArticlesPage, { name: 'relatedArticlesPage' })
+  async relatedArticlesPage(
+    @Args('articleId', { type: () => ID }) articleId: string,
+    @Args('stableClusterId', { type: () => String, nullable: true })
+    stableClusterId?: string | null,
+    @Args('sortMode', {
+      type: () => RelatedSortModeEnum,
+      nullable: true,
+      defaultValue: RelatedSortModeEnum.RELEVANCE,
+    })
+    sortMode?: RelatedSortModeEnum | null,
+    @Args('context', {
+      type: () => RelatedArticlesContextInput,
+      nullable: true,
+    })
+    context?: RelatedArticlesContextInput | null,
+    @Args('excludeIds', { type: () => [ID], nullable: true })
+    excludeIds?: string[] | null,
+    @Args('countries', {
+      type: () => [String],
+      nullable: true,
+      description:
+        'Only coverage from these countries, ISO alpha-3 (GLOBAL for international sources). Absent or empty means all.',
+    })
+    countries?: string[] | null,
+    @Args('languages', {
+      type: () => [String],
+      nullable: true,
+      description:
+        'Only coverage in these languages, base tags such as `de`. Absent or empty means all.',
+    })
+    languages?: string[] | null,
+    @Args('first', {
+      type: () => Int,
+      nullable: true,
+      defaultValue: DEFAULT_RELATED_PAGE_SIZE,
+    })
+    first?: number | null,
+    @Args('after', { type: () => String, nullable: true })
+    after?: string | null,
+  ): Promise<RelatedArticlesPage> {
+    if (excludeIds && excludeIds.length > MAX_RELATED_EXCLUDE_IDS) {
+      throw new BadRequestException(
+        `excludeIds accepts at most ${MAX_RELATED_EXCLUDE_IDS} ids, received ${excludeIds.length}`,
+      );
+    }
+    for (const [name, values] of [
+      ['countries', countries],
+      ['languages', languages],
+    ] as const) {
+      if (values && values.length > MAX_RELATED_FILTER_VALUES) {
+        throw new BadRequestException(
+          `${name} accepts at most ${MAX_RELATED_FILTER_VALUES} values, received ${values.length}`,
+        );
+      }
+    }
+    assertRelatedContextCaps(context);
+    assertCursorLength(after);
+    const pageSize = Math.min(
+      Math.max(first ?? DEFAULT_RELATED_PAGE_SIZE, 1),
+      MAX_RELATED_PAGE_SIZE,
+    );
+    return this.articlesForTopicsService.getRelatedArticlesPage({
+      articleId,
+      stableClusterId,
+      sortMode: toSortMode(sortMode),
+      context: toGeoLanguageContext(context),
+      excludeIds,
+      countries,
+      languages,
+      first: pageSize,
+      after,
+    });
   }
 
   @Query(() => NewsCluster, { name: 'newsClusterForArticle', nullable: true })
@@ -399,6 +518,7 @@ export class InternalNewsResolver {
     first?: number,
     @Args('after', { type: () => String, nullable: true }) after?: string,
   ): Promise<NewsPublishersResponse> {
+    assertKeysetCursor(after);
     return this.newsPublisherService.findAll(
       countryCode,
       first ?? DEFAULT_PAGE_SIZE,
@@ -440,6 +560,54 @@ export class InternalNewsResolver {
     assertCursorLength(after);
     return this.newsPublisherService.searchPublishers(query, size, after, {
       maxTimeMS: SEARCH_MAX_TIME_MS,
+    });
+  }
+
+  /**
+   * The publication page. Keyed by EXACTLY ONE of `newsPublisherId`, or `name`
+   * plus `countryCode` (feed rows carry no publication id). Anything else is a
+   * `BAD_PROFILE_KEY` error; a key that matches nothing is null.
+   */
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  @Query(() => PublicationProfile, {
+    name: 'publicationProfile',
+    nullable: true,
+  })
+  async publicationProfile(
+    @Args('newsPublisherId', { type: () => ID, nullable: true })
+    newsPublisherId?: string,
+    @Args('name', { type: () => String, nullable: true }) name?: string,
+    @Args('countryCode', { type: () => String, nullable: true })
+    countryCode?: string,
+    @Args('language', { type: () => String, nullable: true })
+    language?: string,
+  ): Promise<PublicationProfile | null> {
+    const tooLong = (value: string | null | undefined, max: number) =>
+      value != null && value.length > max;
+    if (tooLong(name, MAX_PROFILE_NAME_LENGTH)) {
+      throw new BadRequestException(
+        `name exceeds the maximum length of ${MAX_PROFILE_NAME_LENGTH} characters`,
+      );
+    }
+    if (tooLong(countryCode, MAX_COUNTRY_CODE_LENGTH)) {
+      throw new BadRequestException(
+        `countryCode exceeds the maximum length of ${MAX_COUNTRY_CODE_LENGTH} characters`,
+      );
+    }
+    if (tooLong(language, MAX_PROFILE_LANGUAGE_LENGTH)) {
+      throw new BadRequestException(
+        `language exceeds the maximum length of ${MAX_PROFILE_LANGUAGE_LENGTH} characters`,
+      );
+    }
+    // An id that cannot name a publisher names no publication, not a server error.
+    if (newsPublisherId != null && !OBJECT_ID_HEX.test(newsPublisherId)) {
+      return null;
+    }
+    return this.publicationProfileService.findProfile({
+      newsPublisherId,
+      name,
+      countryCode,
+      language,
     });
   }
 
@@ -565,10 +733,47 @@ const PLACE_MAX_TIME_MS = 1000;
 const SEARCH_MAX_TIME_MS = 2000;
 const OBJECT_ID_HEX = /^[0-9a-fA-F]{24}$/;
 
+/** Page size for `relatedArticlesPage`'s ceiling. */
+const MAX_RELATED_PAGE_SIZE = 50;
+/** Ceiling on `excludeIds`: every id becomes a Set entry and a filter pass over the ordered list. */
+const MAX_RELATED_EXCLUDE_IDS = 200;
+/** Ceiling on each chip filter list. */
+const MAX_RELATED_FILTER_VALUES = 50;
+/** Ceilings on the reader's preferences: the lists and each string in them. */
+const MAX_RELATED_CONTEXT_ITEMS = 50;
+const MAX_RELATED_CONTEXT_STRING_LENGTH = 64;
+const MAX_PROFILE_NAME_LENGTH = 200;
+const MAX_PROFILE_LANGUAGE_LENGTH = 16;
+
 function assertCursorLength(after: string | null | undefined): void {
   if (after && after.length > MAX_CURSOR_LENGTH) {
     throw new BadRequestException(
       `after exceeds the maximum length of ${MAX_CURSOR_LENGTH} characters`,
     );
+  }
+}
+
+/** Names the limit and never the value: a preference is the reader's own text. */
+function assertRelatedContextCaps(
+  context: RelatedArticlesContextInput | null | undefined,
+): void {
+  if (!context) return;
+  for (const [field, value] of Object.entries(context)) {
+    const strings = Array.isArray(value) ? value : value == null ? [] : [value];
+    if (Array.isArray(value) && value.length > MAX_RELATED_CONTEXT_ITEMS) {
+      throw new BadRequestException(
+        `context.${field} accepts at most ${MAX_RELATED_CONTEXT_ITEMS} items, received ${value.length}`,
+      );
+    }
+    if (
+      strings.some(
+        (v) =>
+          typeof v === 'string' && v.length > MAX_RELATED_CONTEXT_STRING_LENGTH,
+      )
+    ) {
+      throw new BadRequestException(
+        `context.${field} accepts values of at most ${MAX_RELATED_CONTEXT_STRING_LENGTH} characters`,
+      );
+    }
   }
 }

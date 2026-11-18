@@ -44,6 +44,10 @@ export {
   PersonaTopicInput,
 } from './articles-for-topics/dto/persona-query.dto';
 export {
+  RelatedSortModeEnum,
+  toSortMode,
+} from './articles-for-topics/dto/related-sort-mode.enum';
+export {
   RelatedArticleFacets,
   RelatedArticlesContextInput,
   RelatedArticlesPage,
@@ -57,6 +61,7 @@ export {
   MAX_NEWEST_PAGE_SIZE,
 } from './news-article/news-article.service';
 export type { PublisherArticleSort } from './news-article/news-article.service';
+export { PublisherArticleOrder } from './news-article/dto/publisher-article-order.enum';
 export { ArticlesForPublicationSourceResponse } from './news-article/dto/articles-for-publication-source-response.dto';
 export {
   EmbeddingSearchResponse,
@@ -76,7 +81,10 @@ export { topicEmbedText } from './embedding-provider/topic-embed-text';
 // root fields as the app-facing API.
 export { TopHeadlinesService } from './top-headlines/top-headlines.service';
 export { TopHeadlinesForCountryResponse, TopHeadline } from './top-headlines/dto/top-headlines-for-country-response.dto';
-export { NewsClusterService } from './news-cluster/news-cluster.service';
+export {
+  NewsClusterService,
+  MAX_ARTICLES_PER_CLUSTER_PAGE,
+} from './news-cluster/news-cluster.service';
 export { NewsClustersResponse } from './news-cluster/dto/news-clusters-response.dto';
 export { ClusterArticlesConnection } from './news-cluster/dto/cluster-articles-connection.dto';
 export { NewsPublisherService } from './news-publisher/news-publisher.service';
@@ -111,6 +119,10 @@ export {
   PublicSourceResolver,
   ArticleSourceUriResolver,
 } from './source-url/source-url.resolvers';
+
+// Publication page
+export { PublicationProfileService } from './publication-profile/publication-profile.service';
+export { PublicationProfile } from './publication-profile/dto/publication-profile.dto';
 
 // Place search and the server status answer
 export { PlaceService } from './place/place.service';

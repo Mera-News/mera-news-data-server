@@ -38,6 +38,8 @@ import {
   InternalNewsPublisherFieldResolver,
   InternalNewsResolver,
 } from './modules/internal-news.resolver';
+import { NewsClusterArticlesResolver } from './modules/news-cluster-articles.resolver';
+import { PublicationProfileService } from '@mera/news-core/publication-profile/publication-profile.service';
 import {
   ArticleSourceUriResolver,
   PublicSourceResolver,
@@ -235,6 +237,8 @@ export function openRateLimit(config: ConfigService): number {
     InternalNewsPublisherFieldResolver,
     PublicSourceResolver,
     ArticleSourceUriResolver,
+    NewsClusterArticlesResolver,
+    PublicationProfileService,
     ServerStatusService,
     // Global, so a new resolver is protected by default rather than by
     // remembering to decorate it. Opt out with `@SkipApiKey()`.

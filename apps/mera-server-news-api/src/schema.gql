@@ -91,6 +91,11 @@ type ArticlesForTopicsByIdsResponse {
   resetAt: String
 }
 
+type ClusterArticlesConnection {
+  articles: [NewsArticle!]!
+  pageInfo: CursorPageInfo!
+}
+
 """
 Membership of an article in a cluster, with the HDBSCAN confidence (0.0–1.0)
 """
@@ -195,6 +200,13 @@ type NewsArticle {
 
 type NewsCluster {
   _id: ID!
+  articles(
+    """Cursor to fetch articles after"""
+    after: String
+
+    """Number of articles to fetch (max 50)"""
+    first: Int = 50
+  ): ClusterArticlesConnection!
   clusterSize: Int
   createdAt: DateTime!
   stableClusterId: String
@@ -306,6 +318,42 @@ type Place {
   search_keys: [String!]!
 }
 
+"""
+A publication (a publisher, not a feed) as shown on the publication page.
+"""
+type PublicationProfile {
+  categories: [String!]!
+  countryCode: String!
+  countryName: String
+
+  """The main source name in the requested language, else its raw name."""
+  displayName: String!
+  homepageUrl: String
+
+  """True for a government body or a regulator."""
+  isOfficial: Boolean!
+
+  """Language codes across all of its sources."""
+  languages: [String!]!
+
+  """The publisher name."""
+  name: String!
+
+  """Page through its articles with articlesForPublisher."""
+  newsPublisherId: ID!
+  publicationType: String
+
+  """
+  Every source publication_name under this publisher. Key per-publication preferences on these.
+  """
+  sourceNames: [String!]!
+
+  """
+  The publisher's subscribe page. Null means it sells no consumer subscription.
+  """
+  subscriptionUri: String
+}
+
 type PublicationSource {
   _id: ID!
   categories: [String!]
@@ -339,6 +387,17 @@ type PublicationSourcesForPublisherResponse {
   publicationSources: [PublicationSource!]!
 }
 
+"""Ordering for articlesForPublisher."""
+enum PublisherArticleOrder {
+  """
+  Newest first across all feeds over 48h, deduped by canonical URL, at most 50 per page.
+  """
+  NEWEST
+
+  """Last 24h ranked by largest cluster size (the original behaviour)."""
+  TOP_HEADLINES
+}
+
 type PublisherSearchHit {
   _id: ID!
   country_code: String!
@@ -359,7 +418,20 @@ type Query {
   articleIdsForPersona(query: PersonaQueryInput!): PersonaQueryResult!
   articlesForCountry(after: String, countryCode: String, first: Int = 20): ArticlesForPublicationSourceResponse!
   articlesForPublicationSource(after: String, first: Int = 20, publicationSourceId: ID!): ArticlesForPublicationSourceResponse!
-  articlesForPublisher(after: String, first: Int = 20, newsPublisherId: ID!): ArticlesForPublicationSourceResponse!
+
+  """
+  A publisher's articles across all its feeds. Default order TOP_HEADLINES: last 24h sorted by largest cluster size. order NEWEST: newest first over 48h.
+  """
+  articlesForPublisher(
+    after: String
+    first: Int = 20
+    newsPublisherId: ID!
+
+    """
+    TOP_HEADLINES (default) keeps the original view. NEWEST is newest first across all feeds.
+    """
+    order: PublisherArticleOrder = TOP_HEADLINES
+  ): ArticlesForPublicationSourceResponse!
 
   """
   Hydrate articles by id for followed ("tracked") stories. Same payload as articlesForTopicsByIds. dailyLimitReached is always false and resetAt is always absent. Capped at 50 ids per request.
@@ -383,9 +455,29 @@ type Query {
   Typeahead place search (anchored prefix on the lowercase key, population desc). Returns [] for queries under 2 chars; limit capped at 15.
   """
   placeSearch(limit: Int! = 8, query: String!): [Place!]!
+  publicationProfile(countryCode: String, language: String, name: String, newsPublisherId: ID): PublicationProfile
   publicationSourcesForNewsPublisher(publisherId: ID!): PublicationSourcesForPublisherResponse!
   recentArticleCount(since: DateTime): Int!
   relatedArticles(articleId: ID!, stableClusterId: String): [ArticleSummary!]!
+  relatedArticlesPage(
+    after: String
+    articleId: ID!
+    context: RelatedArticlesContextInput
+
+    """
+    Only coverage from these countries, ISO alpha-3 (GLOBAL for international sources). Absent or empty means all.
+    """
+    countries: [String!]
+    excludeIds: [ID!]
+    first: Int = 10
+
+    """
+    Only coverage in these languages, base tags such as `de`. Absent or empty means all.
+    """
+    languages: [String!]
+    sortMode: RelatedSortMode = RELEVANCE
+    stableClusterId: String
+  ): RelatedArticlesPage!
   searchPublishers(
     """Cursor to fetch items after"""
     after: String
@@ -423,6 +515,49 @@ type RelatedArticleFacets {
   languages: [RelatedFacetCount!]!
 }
 
+"""
+Anonymous, ephemeral reader signals used to order the RELEVANCE mode. Never persisted, never cached, never linked to a user.
+"""
+input RelatedArticlesContextInput {
+  """App-UI language BASE tag (`zh`, not `zh-Hans`)."""
+  appLanguageBase: String
+
+  """Home country, ISO alpha-3."""
+  homeCountryAlpha3: String
+
+  """The reader's other countries, ISO alpha-3, ranked weight-desc."""
+  otherCountriesAlpha3: [String!]
+
+  """Countries whose sources the reader explicitly prefers, ISO alpha-3."""
+  preferredCountriesAlpha3: [String!]
+
+  """Publications the reader explicitly prefers, normalized names."""
+  preferredPublications: [String!]
+
+  """
+  Publications the reader subscribes to, normalized names. Ranked above preferredPublications.
+  """
+  subscribedPublications: [String!]
+}
+
+"""
+One page of sibling coverage for an article, already ordered server-side.
+"""
+type RelatedArticlesPage {
+  articles: [ArticleSummary!]!
+
+  """
+  Country and language chip counts over the whole related set, not just this page.
+  """
+  facets: RelatedArticleFacets!
+  pageInfo: CursorPageInfo!
+
+  """
+  The `after` cursor did not resolve and this page restarts at index 0. Clients must REPLACE their list, not append.
+  """
+  restarted: Boolean!
+}
+
 """One chip for the related-coverage filters, with its row count."""
 type RelatedFacetCount {
   """
@@ -430,6 +565,24 @@ type RelatedFacetCount {
   """
   code: String!
   count: Int!
+}
+
+"""
+Ordering for relatedArticlesPage. RELEVANCE ranks the reader's publications and language; the two date modes are flat.
+"""
+enum RelatedSortMode {
+  """
+  Flat publish-date descending. Undated rows sort last here too, so NEWEST is not the exact reverse of OLDEST.
+  """
+  NEWEST
+
+  """Flat publish-date ascending. Undated rows sort last."""
+  OLDEST
+
+  """
+  Default. Subscribed publications, then preferred publications, then the reader app language, then newest first. Country is not a key. The only mode that consults the reader context.
+  """
+  RELEVANCE
 }
 
 type SearchPublishersResponse {

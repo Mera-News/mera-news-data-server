@@ -13,8 +13,8 @@
  * is stale. Re-copy it and read the diff.
  *
  * Only documents that validate against this schema are listed. The ones that
- * need fields this API does not serve (world headlines, canonical topics, the
- * publication profile, search over articles) are left out on purpose.
+ * need fields this API does not serve (world headlines, canonical topics,
+ * search over articles) are left out on purpose.
  */
 export const CLIENT_DOCUMENTS: Record<string, string> = {
   AllCountries: `
@@ -495,6 +495,251 @@ query GetArticleIdsForPersona($query: PersonaQueryInput!) {
         hasNextPage
         pageSize
       }
+    }
+  }
+`,
+
+  GetArticlesForPublisher: `
+  query GetArticlesForPublisher(
+    $newsPublisherId: ID!
+    $first: Int
+    $after: String
+    $order: PublisherArticleOrder
+  ) {
+    articlesForPublisher(newsPublisherId: $newsPublisherId, first: $first, after: $after, order: $order) {
+
+      articles {
+        _id
+        title
+        title_en_internal_only
+        description
+        description_en_internal_only
+        pubDate
+        article_url
+        image_url
+        creator
+        source_uri
+        original_language_code
+        publicationSource {
+          _id
+          publication_name
+          country_code
+        }
+      }
+      pageInfo {
+        endCursor
+        hasNextPage
+        pageSize
+      }
+
+    }
+  }
+`,
+
+  GetNewsClusterForArticle: `
+  query GetNewsClusterForArticle($articleId: ID!, $first: Int, $after: String) {
+    newsClusterForArticle(articleId: $articleId) {
+      _id
+      stableClusterId
+      clusterSize
+      createdAt
+      updatedAt
+      articles(first: $first, after: $after) {
+        articles {
+          _id
+          title
+          title_en_internal_only
+          description
+          description_en_internal_only
+          pubDate
+          article_url
+          image_url
+          creator
+          source_uri
+          original_language_code
+          clusterConfidence
+          publicationSource {
+            _id
+            publication_name
+            publication_url
+            country_code
+            country_name
+            category
+            detected_language_code
+            feed_language_code
+          }
+        }
+        pageInfo {
+          endCursor
+          hasNextPage
+          pageSize
+        }
+      }
+    }
+  }
+`,
+
+  GetRelatedArticlesPage: `
+  query GetRelatedArticlesPage(
+    $articleId: ID!
+    $stableClusterId: String
+    $sortMode: RelatedSortMode
+    $context: RelatedArticlesContextInput
+    $excludeIds: [ID!]
+    $first: Int
+    $after: String
+  ) {
+    relatedArticlesPage(
+      articleId: $articleId
+      stableClusterId: $stableClusterId
+      sortMode: $sortMode
+      context: $context
+      excludeIds: $excludeIds
+      first: $first
+      after: $after
+    ) {
+      articles {
+        _id
+        title_en
+        title_original
+        description_en
+        article_url
+        image_url
+        country_code
+        publication_name
+        language_code
+        pubDate
+      }
+      pageInfo {
+        endCursor
+        hasNextPage
+        pageSize
+      }
+      restarted
+    }
+  }
+`,
+
+  GetRelatedArticlesPageFiltered: `
+  query GetRelatedArticlesPageFiltered(
+    $articleId: ID!
+    $stableClusterId: String
+    $sortMode: RelatedSortMode
+    $context: RelatedArticlesContextInput
+    $excludeIds: [ID!]
+    $first: Int
+    $after: String
+    $countries: [String!]
+    $languages: [String!]
+  ) {
+    relatedArticlesPage(
+      articleId: $articleId
+      stableClusterId: $stableClusterId
+      sortMode: $sortMode
+      context: $context
+      excludeIds: $excludeIds
+      first: $first
+      after: $after
+      countries: $countries
+      languages: $languages
+    ) {
+      articles {
+        _id
+        title_en
+        title_original
+        description_en
+        article_url
+        image_url
+        country_code
+        publication_name
+        language_code
+        pubDate
+      }
+      pageInfo {
+        endCursor
+        hasNextPage
+        pageSize
+      }
+      restarted
+      facets {
+        countries {
+          code
+          count
+        }
+        languages {
+          code
+          count
+        }
+      }
+    }
+  }
+`,
+
+  GetRelatedArticlesPageLegacy: `
+  query GetRelatedArticlesPageLegacy(
+    $articleId: ID!
+    $stableClusterId: String
+    $sortMode: RelatedSortMode
+    $context: RelatedArticlesContextInput
+    $excludeIds: [ID!]
+    $first: Int
+    $after: String
+  ) {
+    relatedArticlesPage(
+      articleId: $articleId
+      stableClusterId: $stableClusterId
+      sortMode: $sortMode
+      context: $context
+      excludeIds: $excludeIds
+      first: $first
+      after: $after
+    ) {
+      articles {
+        _id
+        title_en
+        description_en
+        article_url
+        image_url
+        country_code
+        publication_name
+        language_code
+        pubDate
+      }
+      pageInfo {
+        endCursor
+        hasNextPage
+        pageSize
+      }
+      restarted
+    }
+  }
+`,
+
+  PublicationProfile: `
+  query PublicationProfile(
+    $newsPublisherId: ID
+    $name: String
+    $countryCode: String
+    $language: String
+  ) {
+    publicationProfile(
+      newsPublisherId: $newsPublisherId
+      name: $name
+      countryCode: $countryCode
+      language: $language
+    ) {
+      newsPublisherId
+      name
+      displayName
+      homepageUrl
+      publicationType
+      categories
+      languages
+      isOfficial
+      countryCode
+      countryName
+      sourceNames
+      subscriptionUri
     }
   }
 `,

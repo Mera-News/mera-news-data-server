@@ -20,14 +20,19 @@ import {
   ClusterArticleLinkDocument,
 } from '@mera/models/models/cluster-article-link.model';
 import { encodeCursor, decodeCursor, BaseCursorPayload } from '@mera/shared';
+import { SERVABLE_URL_SECURITY_FILTER } from '@mera/shared/url/url-security';
 import { vectorMinScore } from '@mera/shared/embedding-provider/embedding-config';
 import { Inject } from '@nestjs/common';
 import { EMBEDDING_PROVIDER, type EmbeddingProvider } from '@mera/news-core';
 import { NewsClustersResponse } from './dto/news-clusters-response.dto';
+import { ClusterArticlesConnection } from './dto/cluster-articles-connection.dto';
 import { ClusterMembership } from '../articles-for-topics/dto/articles-for-topics.dto';
 import { DEFAULT_PAGE_SIZE } from '../constants';
 
 const OBJECT_ID_HEX = /^[0-9a-f]{24}$/i;
+
+/** Most member articles one page of a cluster may hold. */
+export const MAX_ARTICLES_PER_CLUSTER_PAGE = 50;
 
 @Injectable()
 export class NewsClusterService {
@@ -65,6 +70,107 @@ export class NewsClusterService {
       return null;
     }
     return this.newsClusterModel.findById(link.clusterId).exec();
+  }
+
+  /**
+   * One page of a cluster's member articles, newest link first. The membership
+   * score is a diagnostic: `exposeScores` false answers null for it, so the
+   * ranking signal is not shown to callers.
+   */
+  async clusterArticles(
+    clusterId: string,
+    first: number | undefined,
+    after: string | undefined,
+    exposeScores: boolean,
+  ): Promise<ClusterArticlesConnection> {
+    const pageSize = Math.min(
+      first ?? MAX_ARTICLES_PER_CLUSTER_PAGE,
+      MAX_ARTICLES_PER_CLUSTER_PAGE,
+    );
+
+    const linkMatch: QueryFilter<ClusterArticleLinkDocument> = {
+      clusterId: new Types.ObjectId(clusterId),
+    };
+    if (after) {
+      const cursor = decodeCursor<{ createdAt: string; _id: string }>(after);
+      if (cursor) {
+        linkMatch.$or = [
+          { createdAt: { $lt: new Date(cursor.createdAt) } },
+          {
+            createdAt: new Date(cursor.createdAt),
+            _id: { $lt: new Types.ObjectId(cursor._id) },
+          },
+        ];
+      }
+    }
+
+    const links = await this.clusterArticleLinkModel
+      .find(linkMatch)
+      .sort({ createdAt: -1, _id: -1 })
+      .select('articleId createdAt confidence')
+      .limit(pageSize + 1)
+      .lean()
+      .exec();
+
+    const hasNextPage = links.length > pageSize;
+    const pageLinks = hasNextPage ? links.slice(0, pageSize) : links;
+
+    if (pageLinks.length === 0) {
+      return {
+        articles: [],
+        pageInfo: { endCursor: null, hasNextPage: false, pageSize },
+      };
+    }
+
+    const articleIds = pageLinks.map(
+      (l) => new Types.ObjectId(l.articleId.toString()),
+    );
+
+    // This emits full article rows (`article_url` included) for every member of
+    // a cluster, so it is a serving path. An insecure member is dropped from the
+    // page exactly like an article that TTL'd out from under its link.
+    const articles = await this.newsArticleModel
+      .find({ _id: { $in: articleIds }, ...SERVABLE_URL_SECURITY_FILTER })
+      .select(
+        // Exclude BOTH text-matching variants: prod v1 writes the unsuffixed
+        // field; `_internal_only` covers stray v3-drift docs.
+        '-embedding_article_data_retrieval -embedding_article_data_text_matching -embedding_article_data_text_matching_internal_only',
+      )
+      .populate({ path: 'publicationSourceId', options: { lean: true } })
+      .lean()
+      .exec();
+
+    // Preserve link order (Mongo `$in` doesn't honour input order) and
+    // attach the per-link confidence onto each article as a virtual field
+    // (clusterConfidence) so the client can show membership strength.
+    const byId = new Map(articles.map((a) => [a._id.toString(), a]));
+    const ordered = pageLinks
+      .map((l) => {
+        const article = byId.get(l.articleId.toString());
+        if (!article) return undefined;
+        return {
+          ...article,
+          publicationSource: article.publicationSourceId,
+          clusterConfidence: exposeScores ? l.confidence : null,
+        };
+      })
+      .filter((a): a is NonNullable<typeof a> =>
+        Boolean(a),
+      ) as unknown as NewsArticle[];
+
+    const lastLink = pageLinks[pageLinks.length - 1];
+
+    return {
+      articles: ordered,
+      pageInfo: {
+        endCursor: encodeCursor({
+          createdAt: lastLink.createdAt.toISOString(),
+          _id: lastLink._id.toString(),
+        }),
+        hasNextPage,
+        pageSize,
+      },
+    };
   }
 
   /**

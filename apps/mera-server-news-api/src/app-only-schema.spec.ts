@@ -2,7 +2,7 @@ import { readFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 
 /**
- * The publication page's API is APP-ONLY. The internal news-api (which
+ * The canonical topics and world headlines API is APP-ONLY. The internal news-api (which
  * news clients consume) builds its schema from `libs/mera-news-core`, so a
  * `@Field`, enum or arg added there instead of in apps/mera-server-graphql
  * would silently widen this relay's contract.
@@ -11,9 +11,6 @@ import { join } from 'path';
  * boots: the checked-in schema text, and the SOURCE that would produce it.
  */
 const APP_ONLY = [
-  'PublicationProfile',
-  'PublisherArticleOrder',
-  'publicationProfile',
   'CanonicalTopic',
   'canonicalTopics',
   'WorldHeadlinesResponse',
@@ -33,10 +30,6 @@ describe('news-api stays free of app-only publication-page API', () => {
     const schema = readFileSync(join(__dirname, 'schema.gql'), 'utf8');
     expect(schema).toContain('articlesForPublisher(');
     for (const name of APP_ONLY) expect(schema).not.toContain(name);
-    const publisherQuery = schema
-      .split('\n')
-      .find((line) => line.includes('articlesForPublisher('));
-    expect(publisherQuery).not.toContain('order');
   });
 
   it('neither news-core nor news-api source declares them', () => {
