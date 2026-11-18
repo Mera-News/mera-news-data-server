@@ -1,0 +1,4 @@
+9000001	Testville	Testville	Testville Town,Testvil	10.50000	20.50000	P	PPLA	XX		01				500000		12	Etc/UTC	2020-01-01
+9000002	Testford	Testford	Testford-on-Sea,Port Testford,Testfurt	11.25000	21.75000	P	PPL	XX		02				200000		8	Etc/UTC	2020-01-01
+9000003	Testbrück	Testbruck	Testbruck am See	12.00000	22.00000	P	PPL	YY		01				90000		30	Etc/UTC	2020-01-01
+9000004	Sampleton	Sampleton		13.12500	23.12500	P	PPL	XX		01				50000		5	Etc/UTC	2020-01-01

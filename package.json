@@ -11,6 +11,7 @@
     "scripts": "nest start mera-scripts --",
     "load-rss": "nest start mera-scripts -- load-rss",
     "status": "nest start mera-scripts -- status",
+    "seed-places": "nest start mera-scripts -- seed-places",
     "topic-scores": "nest start mera-scripts -- topic-scores",
     "build:async": "nest build mera-server-async",
     "build:news-api": "nest build mera-server-news-api",

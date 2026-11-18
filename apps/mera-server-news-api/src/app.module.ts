@@ -24,6 +24,8 @@ import {
   EmbeddingProviderModule,
   MeraNewsCoreModule,
   NoopArticleQuota,
+  PlaceModule,
+  ServerStatusService,
 } from '@mera/news-core';
 import {
   API_KEY_VERIFIER,
@@ -207,6 +209,8 @@ export function openRateLimit(config: ConfigService): number {
     // `MeraModelsModule`.
     ModelsNewsModule,
     EmbeddingProviderModule,
+    // Place reference data: a model the news schemas do not carry.
+    PlaceModule,
     // The whole news pipeline, composed with the UNMETERED quota binding.
     // There is no user to charge on this surface; the caller enforces its own
     // users' quotas on its own side. `forRoot` takes the binding rather than
@@ -231,6 +235,7 @@ export function openRateLimit(config: ConfigService): number {
     InternalNewsPublisherFieldResolver,
     PublicSourceResolver,
     ArticleSourceUriResolver,
+    ServerStatusService,
     // Global, so a new resolver is protected by default rather than by
     // remembering to decorate it. Opt out with `@SkipApiKey()`.
     // Open mode is for one reader's own install: one shared principal, so

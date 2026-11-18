@@ -35,6 +35,7 @@ const EXPECTED_OPERATIONS = [
   'GetRecentArticleCount',
   'GetTopHeadlinesForCountry',
   'GetTopHeadlinesForCountryWindowed',
+  'PlaceSearch',
   'PublicationSourcesForNewsPublisher',
   'SearchPublishers',
 ];

@@ -53,6 +53,12 @@ The `news-sync-fanout` queue creates a `load-rss-feed` job for each feed that is
 
 Grouping articles into stories is done by a separate clustering job that is not part of this repository.
 
+## Place data
+
+Place search reads a `places` collection that you load yourself. Download `cities15000.zip` from https://download.geonames.org/export/dump/, unzip it, and run `npm run seed-places -- --file cities15000.txt`. Add `--admin1-file admin1CodesASCII.txt` (same page) for region names. Until the places are loaded, place search answers an empty list and `newsServerStatus` reports `placesSeeded: false`.
+
+Place names from GeoNames (https://www.geonames.org), licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/).
+
 ## Tests
 
 ```

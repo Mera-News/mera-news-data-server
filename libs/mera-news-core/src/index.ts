@@ -112,5 +112,11 @@ export {
   ArticleSourceUriResolver,
 } from './source-url/source-url.resolvers';
 
+// Place search and the server status answer
+export { PlaceService } from './place/place.service';
+export { PlaceModule } from './place/place.module';
+export { ServerStatusService } from './server-status/server-status.service';
+export { NewsServerStatus } from './server-status/server-status.dto';
+
 // Composition
 export { MeraNewsCoreModule } from './mera-news-core.module';

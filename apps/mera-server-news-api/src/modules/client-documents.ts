@@ -441,6 +441,21 @@ query GetArticleIdsForPersona($query: PersonaQueryInput!) {
   }
 `,
 
+  PlaceSearch: `
+  query PlaceSearch($query: String!, $limit: Int) {
+    placeSearch(query: $query, limit: $limit) {
+      _id
+      city
+      region
+      countryCode
+      displayName
+      normalized
+      population
+      search_keys
+    }
+  }
+`,
+
   PublicationSourcesForNewsPublisher: `
   query PublicationSourcesForNewsPublisher($publisherId: ID!) {
     publicationSourcesForNewsPublisher(publisherId: $publisherId) {

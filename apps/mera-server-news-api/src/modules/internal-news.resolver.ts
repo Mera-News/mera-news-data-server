@@ -12,6 +12,7 @@ import {
 } from '@nestjs/graphql';
 import { NewsArticle } from '@mera/models/models/news-article.model';
 import { NewsCluster } from '@mera/models/models/news-cluster.model';
+import { Place } from '@mera/models/models/place.model';
 import { NewsPublisher } from '@mera/models/models/news-publisher.model';
 import { PublicationSource } from '@mera/models/models/publication-source.model';
 import {
@@ -35,6 +36,9 @@ import {
   TopHeadlinesForCountryResponse,
   TopHeadlinesService,
   CountryService,
+  NewsServerStatus,
+  PlaceService,
+  ServerStatusService,
 } from '@mera/news-core';
 import type { ApiKeyRequest } from '../guards/api-key.guard';
 
@@ -80,6 +84,8 @@ export class InternalNewsResolver {
     private readonly newsClusterService: NewsClusterService,
     private readonly newsPublisherService: NewsPublisherService,
     private readonly countryService: CountryService,
+    private readonly placeService: PlaceService,
+    private readonly serverStatusService: ServerStatusService,
   ) {}
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -451,6 +457,35 @@ export class InternalNewsResolver {
     );
   }
 
+  @Query(() => [Place], {
+    name: 'placeSearch',
+    description:
+      'Typeahead place search (anchored prefix on the lowercase key, population ' +
+      'desc). Returns [] for queries under 2 chars; limit capped at 15.',
+  })
+  async placeSearch(
+    @Args('query', { type: () => String }) query: string,
+    @Args('limit', { type: () => Int, defaultValue: 8 }) limit: number,
+  ): Promise<Place[]> {
+    if (query.length > MAX_PLACE_QUERY_LENGTH) {
+      throw new BadRequestException(
+        `query exceeds the maximum length of ${MAX_PLACE_QUERY_LENGTH} characters`,
+      );
+    }
+    return this.placeService.placeSearch(query, limit, {
+      maxTimeMS: PLACE_MAX_TIME_MS,
+    });
+  }
+
+  @Query(() => NewsServerStatus, {
+    name: 'newsServerStatus',
+    description:
+      'What this server offers: whether places are seeded, how fresh the news is, and the state of clustering and headlines.',
+  })
+  async newsServerStatus(): Promise<NewsServerStatus> {
+    return this.serverStatusService.status();
+  }
+
   @Query(() => [String], { name: 'allCountries' })
   async allCountries(): Promise<string[]> {
     return this.countryService.findAllCountries();
@@ -523,6 +558,9 @@ const MAX_CURSOR_LENGTH = 512;
 const MIN_SEARCH_QUERY_LENGTH = 2;
 const MAX_SEARCH_QUERY_LENGTH = 64;
 const MAX_SEARCH_PAGE_SIZE = 50;
+const MAX_PLACE_QUERY_LENGTH = 64;
+/** Place search is an indexed prefix match; this only bounds a pathological scan. */
+const PLACE_MAX_TIME_MS = 1000;
 /** The publisher search is the one unindexed scan on this surface. */
 const SEARCH_MAX_TIME_MS = 2000;
 const OBJECT_ID_HEX = /^[0-9a-fA-F]{24}$/;

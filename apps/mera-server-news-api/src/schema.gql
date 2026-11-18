@@ -222,6 +222,20 @@ type NewsPublishersResponse {
   pageInfo: CursorPageInfo!
 }
 
+type NewsServerStatus {
+  embeddingModel: String
+  headlineEditionsBuilt: Boolean!
+
+  """When the newest article was stored."""
+  lastArticleAt: DateTime
+  lastClusteringAt: DateTime
+  lastTopicLinkAt: DateTime
+
+  """True once the places seed has been loaded."""
+  placesSeeded: Boolean!
+  vectorIndexState: String
+}
+
 """
 Per-article match metadata. textScore is ALWAYS null in v1. stableClusterId is the id of the article's largest-clusterSize linked cluster, null when the article is a singleton/unclustered.
 """
@@ -277,6 +291,19 @@ type PersonaTopicResult {
   matchMeta: [PersonaMatchMeta!]!
   nextCursor: ID
   topicText: String!
+}
+
+type Place {
+  _id: ID!
+  city: String!
+  countryCode: String!
+  displayName: String!
+  latitude: Float
+  longitude: Float
+  normalized: String!
+  population: Int
+  region: String
+  search_keys: [String!]!
 }
 
 type PublicationSource {
@@ -346,6 +373,16 @@ type Query {
   clusterMembershipsForArticles(articleIds: [ID!]!): [ArticleClusterMemberships!]!
   newsClusterForArticle(articleId: ID!): NewsCluster
   newsPublishers(after: String, countryCode: String, first: Int = 20): NewsPublishersResponse!
+
+  """
+  What this server offers: whether places are seeded, how fresh the news is, and the state of clustering and headlines.
+  """
+  newsServerStatus: NewsServerStatus!
+
+  """
+  Typeahead place search (anchored prefix on the lowercase key, population desc). Returns [] for queries under 2 chars; limit capped at 15.
+  """
+  placeSearch(limit: Int! = 8, query: String!): [Place!]!
   publicationSourcesForNewsPublisher(publisherId: ID!): PublicationSourcesForPublisherResponse!
   recentArticleCount(since: DateTime): Int!
   relatedArticles(articleId: ID!, stableClusterId: String): [ArticleSummary!]!

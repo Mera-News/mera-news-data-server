@@ -117,4 +117,27 @@ describe('request text in the news API logs', () => {
     ).toBeGreaterThanOrEqual(4);
     expect(capture.lines.filter((l) => l.includes(MARKER))).toEqual([]);
   });
+
+  it('logs no place query text for a valid request, a too long one or a wrong type', async () => {
+    const capture = captureLogs();
+    const doc = 'query($q: String!) { placeSearch(query: $q) { _id } }';
+    try {
+      const valid = await api.gql<{ placeSearch: unknown[] }>(doc, {
+        q: MARKER,
+      });
+      // The resolver ran: a valid query answers data, not a validation error.
+      expect(valid.body.errors).toBeUndefined();
+      expect(valid.body.data?.placeSearch).toEqual([]);
+      await api.gql(doc, { q: MARKER.repeat(6) });
+      await api.gql(doc, { q: { text: MARKER } });
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    } finally {
+      capture.restore();
+    }
+
+    expect(
+      capture.lines.filter((l) => l.includes('"/graphql')).length,
+    ).toBeGreaterThanOrEqual(3);
+    expect(capture.lines.filter((l) => l.includes(MARKER))).toEqual([]);
+  });
 });
