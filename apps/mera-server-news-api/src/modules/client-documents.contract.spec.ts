@@ -44,6 +44,7 @@ const EXPECTED_OPERATIONS = [
   'GetTopHeadlinesForCountry',
   'GetTopHeadlinesForCountryWindowed',
   'GetWorldHeadlines',
+  'NewsServerStatus',
   'PlaceSearch',
   'PublicationProfile',
   'PublicationSourcesForNewsPublisher',

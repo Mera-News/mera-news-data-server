@@ -803,4 +803,17 @@ query GetArticleIdsForPersona($query: PersonaQueryInput!) {
     }
   }
 `,
+  NewsServerStatus: `
+  query NewsServerStatus {
+    newsServerStatus {
+      placesSeeded
+      lastArticleAt
+      lastClusteringAt
+      lastTopicLinkAt
+      headlineEditionsBuilt
+      vectorIndexState
+      embeddingModel
+    }
+  }
+`,
 };
