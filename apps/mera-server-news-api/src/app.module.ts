@@ -40,7 +40,13 @@ import {
 const DEFAULT_CACHE_TTL_MS = 3_600_000;
 const DEFAULT_OPEN_RATE_LIMIT = 60;
 
-function openRateLimit(config: ConfigService): number {
+/** `NEWS_API_OPEN`: serve without a key. `true` or `false` only. */
+export function newsApiOpen(config: ConfigService): boolean {
+  return readBool(config, 'NEWS_API_OPEN', false);
+}
+
+/** `NEWS_API_OPEN_RATE_LIMIT`: requests a minute per address in open mode. */
+export function openRateLimit(config: ConfigService): number {
   const text = readText(config, 'NEWS_API_OPEN_RATE_LIMIT');
   if (text === '') return DEFAULT_OPEN_RATE_LIMIT;
   const n = Number(text);
@@ -172,7 +178,7 @@ function openRateLimit(config: ConfigService): number {
     ThrottlerModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
-        const open = readBool(config, 'NEWS_API_OPEN', false);
+        const open = newsApiOpen(config);
         return {
           throttlers: [{ ttl: 60_000, limit: openRateLimit(config) }],
           skipIf: () => !open,
@@ -213,7 +219,7 @@ function openRateLimit(config: ConfigService): number {
       provide: API_KEY_VERIFIER,
       inject: [ConfigService],
       useFactory: (config: ConfigService) =>
-        readBool(config, 'NEWS_API_OPEN', false)
+        newsApiOpen(config)
           ? new OpenApiKeyVerifier()
           : new EnvApiKeyVerifier(config),
     },

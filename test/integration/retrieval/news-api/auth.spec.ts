@@ -1,3 +1,8 @@
+import { ConfigService } from '@nestjs/config';
+import {
+  newsApiOpen,
+  openRateLimit,
+} from '../../../../apps/mera-server-news-api/src/app.module';
 import { bootNewsApi, type NewsApi } from '../support/boot-news-api';
 
 const COUNTRIES = '{ allCountries }';
@@ -81,11 +86,23 @@ describe('news API in open mode', () => {
   });
 });
 
-describe('news API with NEWS_API_OPEN set to something else', () => {
-  it('fails to boot, naming the allowed values', async () => {
-    await expect(bootNewsApi({ env: { NEWS_API_OPEN: '1' } })).rejects.toThrow(
+// Settings the module reads at boot, checked through the same readers: a
+// whole-app boot that fails half way leaves its Mongo connection building
+// indexes after the suite ends, which breaks later suites on the worker.
+describe('news API open-mode settings', () => {
+  const config = (values: Record<string, string>) => new ConfigService(values);
+
+  it('refuses NEWS_API_OPEN values other than true or false', () => {
+    expect(() => newsApiOpen(config({ NEWS_API_OPEN: '1' }))).toThrow(
       'true or false',
     );
+  });
+
+  it('refuses a rate limit that is not a positive whole number', () => {
+    expect(() =>
+      openRateLimit(config({ NEWS_API_OPEN_RATE_LIMIT: 'lots' })),
+    ).toThrow('NEWS_API_OPEN_RATE_LIMIT');
+    expect(openRateLimit(config({}))).toBe(60);
   });
 });
 
@@ -126,13 +143,5 @@ describe('news API open mode rate limit', () => {
     };
     expect(body.errors?.[0].extensions?.code).toBe('TOO_MANY_REQUESTS');
     await api.http().get('/health').expect(200);
-  });
-
-  it('rejects a limit that is not a positive whole number', async () => {
-    await expect(
-      bootNewsApi({
-        env: { NEWS_API_OPEN: 'true', NEWS_API_OPEN_RATE_LIMIT: 'lots' },
-      }),
-    ).rejects.toThrow('NEWS_API_OPEN_RATE_LIMIT');
   });
 });

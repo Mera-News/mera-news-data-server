@@ -1,4 +1,7 @@
+import { ConfigService } from '@nestjs/config';
 import { getModelToken } from '@nestjs/mongoose';
+import { buildArticleEnrichmentProvider } from '@mera/shared/enrichment/build-enrichment-provider';
+import { buildTranslationProvider } from '../../../../apps/mera-server-async/src/modules/sync-news/pipeline-providers/translation-provider.module';
 import { http, HttpResponse } from 'msw';
 import type { Model } from 'mongoose';
 import { QueueName } from '@mera/shared';
@@ -278,17 +281,24 @@ describe('translation provider choice', () => {
     }
   });
 
-  it('refuses to boot on an unknown TRANSLATION_PROVIDER, naming the allowed values', async () => {
-    process.env.TRANSLATION_PROVIDER = 'gemni';
-    await expect(bootAsyncApp().then((h) => h.close())).rejects.toThrow(
-      'gemini, routed, none, fake',
-    );
+  // The two refusals call the factories the provider modules run at boot. A
+  // whole-app boot that fails half way leaves its Mongo connection building
+  // indexes after the suite ends, which breaks later suites on the worker.
+  const config = (values: Record<string, string>) => new ConfigService(values);
+
+  it('refuses an unknown TRANSLATION_PROVIDER, naming the allowed values', () => {
+    expect(() =>
+      buildTranslationProvider(config({ TRANSLATION_PROVIDER: 'gemni' })),
+    ).toThrow('gemini, routed, none, fake');
   });
 
-  it('refuses to boot on an unknown ARTICLE_ENRICHMENT_PROVIDER', async () => {
-    process.env.ARTICLE_ENRICHMENT_PROVIDER = 'gpt';
-    await expect(bootAsyncApp().then((h) => h.close())).rejects.toThrow(
-      'gemini, openrouter, fake',
-    );
+  it('refuses an unknown ARTICLE_ENRICHMENT_PROVIDER', () => {
+    expect(() =>
+      buildArticleEnrichmentProvider({
+        config: config({ ARTICLE_ENRICHMENT_PROVIDER: 'gpt' }),
+        job: 'pre-process-articles',
+        loadPlaces: () => Promise.resolve([]),
+      }),
+    ).toThrow('gemini, openrouter, fake');
   });
 });

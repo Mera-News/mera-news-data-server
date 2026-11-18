@@ -5,8 +5,8 @@ import helmet from 'helmet';
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { Logger } from 'nestjs-pino';
-import { readBool, readText } from '@mera/shared/config/env-choice';
-import { AppModule } from './app.module';
+import { readText } from '@mera/shared/config/env-choice';
+import { AppModule, newsApiOpen } from './app.module';
 
 /**
  * Internal news API bootstrap.
@@ -29,7 +29,7 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
   const isProduction = configService.get<string>('NODE_ENV') === 'production';
 
-  const open = readBool(configService, 'NEWS_API_OPEN', false);
+  const open = newsApiOpen(configService);
   if (open) {
     logger.warn(
       'NEWS_API_OPEN=true: the news API answers without a key. Bind it to 127.0.0.1 with NEWS_API_HOST or put a proxy with its own limits in front. Anyone who reaches it can spend your embedding quota.',
