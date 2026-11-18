@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectConnection } from '@nestjs/mongoose';
 import { Connection, Types } from 'mongoose';
 import { RETENTION_RULES, RetentionRule } from '@mera/shared';
@@ -59,11 +59,22 @@ export interface DataRetentionSweepResult {
 // 16MB doc limit.
 const ID_BATCH_SIZE = 10_000;
 
+export const RETENTION_RULES_LIST = 'RETENTION_RULES_LIST';
+
 @Injectable()
 export class DataRetentionSweepService {
   private readonly logger = new Logger(DataRetentionSweepService.name);
 
-  constructor(@InjectConnection() private readonly connection: Connection) {}
+  private readonly rules: readonly RetentionRule[];
+
+  constructor(
+    @InjectConnection() private readonly connection: Connection,
+    // Injectable so a test (or a deployment) can give the sweep its rule
+    // list; the default is the shared one.
+    @Optional() @Inject(RETENTION_RULES_LIST) rules?: readonly RetentionRule[],
+  ) {
+    this.rules = rules ?? RETENTION_RULES;
+  }
 
   async sweep(
     data: DataRetentionSweepJobData,
@@ -73,9 +84,10 @@ export class DataRetentionSweepService {
     const onlyModels = data.onlyModels && new Set(data.onlyModels);
     const results: RuleSweepResult[] = [];
 
-    const totalRules = RETENTION_RULES.length;
+    const failedRules: string[] = [];
+    const totalRules = this.rules.length;
     for (let idx = 0; idx < totalRules; idx++) {
-      const rule = RETENTION_RULES[idx];
+      const rule = this.rules[idx];
       this.throwIfAborted(signal);
       if (onlyModels && !onlyModels.has(rule.model)) continue;
 
@@ -91,12 +103,12 @@ export class DataRetentionSweepService {
           `Swept ${rule.model}: deleted ${result.parentsDeleted}/${result.expiredParents} expired`,
         );
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
+        if (signal.aborted || (err as Error)?.name === 'AbortError') throw err;
+        // Name only: the message can carry row data.
         this.logger.error(
-          `Sweep failed for ${rule.model}: ${message}`,
-          err instanceof Error ? err.stack : undefined,
+          `Sweep failed for ${rule.model}: ${(err as Error)?.name}`,
         );
-        throw err;
+        failedRules.push(rule.model);
       }
     }
 
@@ -108,6 +120,10 @@ export class DataRetentionSweepService {
       await reporter.progress(85, 'Running orphan cleanup');
       orphans = await this.cleanupOrphans(signal);
       await reporter.log(`Orphan cleanup: ${JSON.stringify(orphans)}`);
+    }
+
+    if (failedRules.length > 0) {
+      throw new Error(`Retention rules failed: ${failedRules.join(', ')}`);
     }
 
     return { success: true, rules: results, orphans };
