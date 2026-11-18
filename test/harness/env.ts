@@ -8,7 +8,7 @@ const SKIP_DIRS = new Set(['node_modules', 'dist', 'coverage', '.git']);
 
 // Keys that can point at a real service when they are exported in the shell.
 const SENSITIVE_KEY =
-  /^(MONGODB_URI|REDIS_URL|PERSISTENT_REDIS_URL|PROXY_URLS|GEMINI_\w+|JINA_\w+|OPENROUTER_\w+|GOOGLE_\w+|GCLOUD_\w+|\w+_API_KEY|\w+_TOKEN|\w+_SECRET)$/;
+  /^(MONGODB_URI|REDIS_URL|PERSISTENT_REDIS_URL|PROXY_URLS|EMBEDDING_BASE_URL|EMBEDDING_MODEL|GEMINI_\w+|JINA_\w+|OPENROUTER_\w+|GOOGLE_\w+|GCLOUD_\w+|\w+_API_KEY|\w+_TOKEN|\w+_SECRET)$/;
 
 /** Every `.env*` file under `root` except `.env.example`. */
 export function findEnvFiles(root: string): string[] {
@@ -52,6 +52,17 @@ export const HARNESS_ENV: Record<string, string> = {
   TRANSLATION_PROVIDER: 'fake',
   EMBEDDING_PROVIDER: 'fake',
   ARTICLE_ENRICHMENT_PROVIDER: 'fake',
+  // The fakes are refused under NODE_ENV=production without this.
+  ALLOW_FAKE_PROVIDERS: 'true',
+  // Self-host settings a developer shell may carry: '' reads as unset.
+  EMBEDDING_DIMS: '',
+  VECTOR_MIN_SCORE: '',
+  LOCAL_SCHEDULES: '',
+  NEWS_API_OPEN: '',
+  NEWS_API_HOST: '',
+  NEWS_API_OPEN_RATE_LIMIT: '',
+  FEED_FETCH_ALLOW_HOSTS: '',
+  FEED_FETCH_USER_AGENT: '',
   GEMINI_TRANSPORT: 'developer',
   HTTP_UPGRADE_PROBE_ENABLED: 'false',
   PRE_PROCESS_ARTICLES_ENABLED: 'false',
