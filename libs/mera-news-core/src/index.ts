@@ -106,5 +106,11 @@ export {
 export { CursorPageInfo } from './dto/pagination.dto';
 export { DEFAULT_PAGE_SIZE } from './constants';
 
+// Source address redaction
+export {
+  PublicSourceResolver,
+  ArticleSourceUriResolver,
+} from './source-url/source-url.resolvers';
+
 // Composition
 export { MeraNewsCoreModule } from './mera-news-core.module';

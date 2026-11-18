@@ -341,6 +341,44 @@ describe('news API source URLs', () => {
     ];
   }
 
+  describe('article source_uri', () => {
+    let api: NewsApi;
+    beforeAll(async () => {
+      api = await bootNewsApi();
+    });
+    afterAll(() => api.close());
+
+    const byId = `query($id: ID!) { articleById(id: $id) { source_uri } }`;
+    async function sourceUriOf(stored: string) {
+      await api.resetDb();
+      const source = await seedSource(api.connection);
+      const id = await seedArticle(api.connection, {
+        source,
+        overrides: { source_uri: stored },
+      });
+      const res = await api.gql<{ articleById: { source_uri: string } }>(
+        byId,
+        { id: String(id) },
+        'news-api-test-key',
+      );
+      expect(res.body.errors).toBeUndefined();
+      return res.body.data!.articleById.source_uri;
+    }
+
+    it('serves origin plus path for an article stored with a full address', async () => {
+      expect(await sourceUriOf(FEED)).toBe('https://feeds.example.test/rss');
+    });
+
+    it('serves a plain address unchanged and never the raw text of an unparseable value', async () => {
+      expect(await sourceUriOf('https://feeds.example.test/plain.xml')).toBe(
+        'https://feeds.example.test/plain.xml',
+      );
+      expect(await sourceUriOf('not a url ?key=zq7')).toBe(
+        '(address withheld)',
+      );
+    });
+  });
+
   describe('in open mode', () => {
     let api: NewsApi;
     beforeAll(async () => {

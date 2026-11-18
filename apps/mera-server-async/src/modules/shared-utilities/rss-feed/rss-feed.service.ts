@@ -3,6 +3,10 @@ import Parser from 'rss-parser';
 import * as countries from 'i18n-iso-countries';
 import { PublicationSource } from '@mera/models/models/publication-source.model';
 import { ProxyEgressUnavailableError } from '@mera/shared';
+import {
+  redactAddress,
+  scrubUrlsInText,
+} from '@mera/shared/url/strip-url-secrets';
 import { AxiosService } from '../axios/axios.service';
 import { FeedFetchError } from './feed-fetch-error';
 
@@ -247,7 +251,11 @@ export class RSSFeedService {
         } else {
           const message =
             error instanceof Error ? error.message : String(error);
-          throw new FeedFetchError('network', `Network error: ${message}`);
+          // An HTTP client's message can embed the address it was asked for.
+          throw new FeedFetchError(
+            'network',
+            `Network error: ${scrubUrlsInText(message)}`,
+          );
         }
       }
 
@@ -319,7 +327,7 @@ export class RSSFeedService {
           parseError instanceof Error ? parseError.message : String(parseError);
         throw new FeedFetchError(
           'parse_error',
-          `Failed to parse RSS feed as valid XML: ${message}`,
+          `Failed to parse RSS feed as valid XML: ${scrubUrlsInText(message)}`,
         );
       }
 
@@ -389,8 +397,9 @@ export class RSSFeedService {
       const message = error instanceof Error ? error.message : String(error);
       // Use warn instead of error - RSS fetch failures are expected operational issues
       // (blocked feeds, timeouts, network issues) not bugs
+      // A feed address can carry a credential in its query; log origin and path only.
       this.logger.warn(
-        `Failed to fetch RSS feed ${publicationSource.publication_name} (${feedUrl}): ${message}`,
+        `Failed to fetch RSS feed ${publicationSource.publication_name} (${redactAddress(feedUrl)}): ${scrubUrlsInText(message)}`,
       );
       throw error;
     }

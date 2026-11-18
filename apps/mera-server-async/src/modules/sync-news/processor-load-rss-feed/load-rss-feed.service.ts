@@ -30,6 +30,7 @@ import {
 } from '@mera/shared/url/url-security';
 import type { HttpLinksPolicyConfig } from '@mera/shared/url/url-security';
 import { buildArticleCopyKeys } from '@mera/shared/url/article-copy-keys';
+import { redactAddress } from '@mera/shared/url/strip-url-secrets';
 import {
   PublicationSource,
   PublicationSourceDocument,
@@ -1144,8 +1145,9 @@ export class LoadRSSFeedService {
       }
     }
     if (itemsMissingFields > 0) {
+      // A feed address can carry a credential in its query; log origin and path only.
       this.logger.warn(
-        `Skipped ${itemsMissingFields} item(s) from ${sourceUri}: missing a title or link`,
+        `Skipped ${itemsMissingFields} item(s) from ${redactAddress(sourceUri)}: missing a title or link`,
       );
     }
 
@@ -1580,7 +1582,7 @@ export class LoadRSSFeedService {
       // leaves them valid.
       copy_keys: buildArticleCopyKeys(articleUrl),
       image_url: imageUrl,
-      source_uri: sourceUri,
+      source_uri: redactAddress(sourceUri),
       publicationSourceId: new Types.ObjectId(publicationSourceId),
       original_language_code: languageCode,
       type: 'rss-feed',

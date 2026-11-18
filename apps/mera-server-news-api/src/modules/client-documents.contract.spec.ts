@@ -9,7 +9,7 @@ import {
   InternalNewsPublisherFieldResolver,
   InternalNewsResolver,
 } from './internal-news.resolver';
-import { PublicSourceResolver } from './public-source.resolver';
+import { PublicSourceResolver } from '@mera/news-core/source-url/source-url.resolvers';
 import { CLIENT_DOCUMENTS } from './client-documents';
 
 /**

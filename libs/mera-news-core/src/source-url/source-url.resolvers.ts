@@ -1,15 +1,10 @@
 import { Parent, ResolveField, Resolver } from '@nestjs/graphql';
+import { NewsArticle } from '@mera/models/models/news-article.model';
 import { PublicationSource } from '@mera/models/models/publication-source.model';
-
-/** Origin plus path: no userinfo, query string or fragment. Empty when it is not a web URL. */
-function stripUrlSecrets(value: string): string {
-  try {
-    const url = new URL(value);
-    return url.origin === 'null' ? '' : url.origin + url.pathname;
-  } catch {
-    return '';
-  }
-}
+import {
+  redactAddress,
+  stripUrlSecrets,
+} from '@mera/shared/url/strip-url-secrets';
 
 /**
  * Anyone who holds a key to this API, or reaches it in open mode, can read
@@ -34,5 +29,14 @@ export class PublicSourceResolver {
   @ResolveField(() => String, { name: 'last_fetch_error', nullable: true })
   lastFetchError(): null {
     return null;
+  }
+}
+
+/** Articles stored before addresses were stripped on write still hold the full feed address. */
+@Resolver(() => NewsArticle)
+export class ArticleSourceUriResolver {
+  @ResolveField(() => String, { name: 'source_uri' })
+  sourceUri(@Parent() article: NewsArticle): string {
+    return redactAddress(article.source_uri);
   }
 }

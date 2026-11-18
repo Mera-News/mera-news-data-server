@@ -36,7 +36,10 @@ import {
   InternalNewsPublisherFieldResolver,
   InternalNewsResolver,
 } from './modules/internal-news.resolver';
-import { PublicSourceResolver } from './modules/public-source.resolver';
+import {
+  ArticleSourceUriResolver,
+  PublicSourceResolver,
+} from '@mera/news-core/source-url/source-url.resolvers';
 import {
   keepQueryLimitCode,
   MAX_QUERY_FIELDS,
@@ -227,6 +230,7 @@ export function openRateLimit(config: ConfigService): number {
     InternalNewsResolver,
     InternalNewsPublisherFieldResolver,
     PublicSourceResolver,
+    ArticleSourceUriResolver,
     // Global, so a new resolver is protected by default rather than by
     // remembering to decorate it. Opt out with `@SkipApiKey()`.
     // Open mode is for one reader's own install: one shared principal, so
