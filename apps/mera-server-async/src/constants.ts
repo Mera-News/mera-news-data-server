@@ -1,16 +1,12 @@
-import { VECTOR_RETRIEVAL_MIN_SCORE } from '@mera/shared';
-
 // --- Vector Search: Data Retrieval (asymmetric: query → article, topic linking) ---
 // Bumped 0.76 → 0.78 (score-distribution audit, 2026-07-17): the world-weather /
 // world-politics junk tail on the retrieval vectors lives at 0.745–0.78, while
 // healthy topics separate cleanly at ~0.785; EU-AI-Act-class topics still keep
 // ≥40 candidates above 0.78. 0.76 was nearly inert (top-100 ANN floors already
 // sit at 0.745–0.754), so it trimmed almost nothing.
-// The value lives in @mera/shared (VECTOR_RETRIEVAL_MIN_SCORE) so this
-// site, articles-for-topics.service.ts, and news-cluster.service.ts stay in
-// lockstep.
-export const VECTOR_SEARCH_DATA_RETRIEVAL_MIN_SCORE =
-  VECTOR_RETRIEVAL_MIN_SCORE;
+// The default lives in @mera/shared (VECTOR_RETRIEVAL_MIN_SCORE, retrieval-constants.ts);
+// VECTOR_MIN_SCORE overrides it for article-search.service.ts and
+// news-cluster.service.ts.
 export const VECTOR_SEARCH_DATA_RETRIEVAL_RESULT_LIMIT = 500;
 export const VECTOR_SEARCH_DATA_RETRIEVAL_NUM_CANDIDATES = 1000;
 

@@ -46,6 +46,7 @@ import {
   DEFAULT_PROVIDER_RESILIENCE,
 } from '@mera/shared';
 import { packSignBits } from '@mera/shared/vector/pack-sign-bits';
+import { isCalibratedEmbedding } from '@mera/shared/embedding-provider/embedding-config';
 import { classifyCanonical } from '@mera/shared/enrichment/category-tree';
 import type { IPolicy } from 'cockatiel';
 import { CanonicalTopicIndex } from './canonical-topic-index.service';
@@ -85,6 +86,7 @@ export class GenerateEmbeddingService {
   private readonly logger = new Logger(GenerateEmbeddingService.name);
   private readonly maxBatch: number;
   private readonly policy: IPolicy;
+  private readonly calibrated: boolean;
 
   constructor(
     @InjectModel(NewsArticle.name)
@@ -98,6 +100,7 @@ export class GenerateEmbeddingService {
     config: ConfigService,
     private readonly canonicalIndex: CanonicalTopicIndex,
   ) {
+    this.calibrated = isCalibratedEmbedding(config);
     this.maxBatch = config.get<number>('JINA_BATCH_TEXTS', 500);
     const maxInflight = config.get<number>('JINA_MAX_INFLIGHT', 3);
 
@@ -277,10 +280,15 @@ export class GenerateEmbeddingService {
         // Packed sign-bit sidecar of the retrieval vector, computed here at
         // embedding time (not per request) — see packSignBits for the
         // MSB-first bit-order contract the on-device client must reproduce.
-        const vectorSidecarPacked = packSignBits(retrieval[j]).toString(
-          'base64',
-        );
-        const links = classifyCanonical(matching[j], canonicalIndex);
+        // The sidecar and the canonical links are both tuned on the Jina
+        // model (the client's Hamming bar, the canonical topic vectors), so
+        // another model gets neither.
+        const vectorSidecarPacked = this.calibrated
+          ? packSignBits(retrieval[j]).toString('base64')
+          : undefined;
+        const links = this.calibrated
+          ? classifyCanonical(matching[j], canonicalIndex)
+          : [];
         if (links.length > 0) categorized++;
         cacheWrites.push({
           // Carry the translation delta through untouched, add both vectors.

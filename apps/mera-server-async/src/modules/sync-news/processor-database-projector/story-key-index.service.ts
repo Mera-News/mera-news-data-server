@@ -13,7 +13,8 @@
  * through its members. Otherwise the article mints its own `_id`. Layer 2 is
  * off when `HAMMING_BAR <= 0`, and an article whose English text is under
  * `MIN_TEXT_CHARS` neither searches it nor becomes a seed (layer 1 still
- * applies to it).
+ * applies to it). Layer 2 runs only for the calibrated embedding model
+ * (`isCalibratedEmbedding`).
  *
  * In memory, one process: a ring of `RING_CAPACITY` slots plus copy-key and id
  * maps, rebuilt at boot from a narrow 48h `_id`-range stream. A second
@@ -53,6 +54,7 @@ import {
   PublicationSourceDocument,
 } from '@mera/models/models/publication-source.model';
 import { JobLogger } from '@mera/shared';
+import { isCalibratedEmbedding } from '@mera/shared/embedding-provider/embedding-config';
 import {
   enTextChars,
   HAMMING_BAR,
@@ -167,6 +169,7 @@ export class StoryKeyIndexService
   private lastRebuildAt = 0;
   private chain: Promise<unknown> = Promise.resolve();
   private sweepTimer?: NodeJS.Timeout;
+  private readonly calibrated: boolean;
 
   constructor(
     @InjectModel(NewsArticle.name)
@@ -175,6 +178,7 @@ export class StoryKeyIndexService
     private readonly publicationSourceModel: Model<PublicationSourceDocument>,
     config: ConfigService,
   ) {
+    this.calibrated = isCalibratedEmbedding(config);
     this.jobLogger = new JobLogger({
       job: 'story-key-index',
       level: JobLogger.parseLevel(config.get<string>('LOG_LEVEL')),
@@ -576,7 +580,11 @@ export class StoryKeyIndexService
         doc.publicationSourceId ? String(doc.publicationSourceId) : null,
       ),
       bits,
-      nearOk: HAMMING_BAR > 0 && bits !== null && textChars >= MIN_TEXT_CHARS,
+      nearOk:
+        this.calibrated &&
+        HAMMING_BAR > 0 &&
+        bits !== null &&
+        textChars >= MIN_TEXT_CHARS,
       copyHashes: (doc.copy_keys ?? []).map(hashCopyKey),
       dbKey: typeof doc.story_key === 'string' ? doc.story_key : null,
     };

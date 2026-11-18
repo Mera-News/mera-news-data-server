@@ -16,7 +16,10 @@ export const EMBEDDING_PROVIDER = 'EMBEDDING_PROVIDER';
 export type EmbeddingTask = 'retrieval.passage' | 'retrieval.query';
 
 export interface EmbeddingProvider {
-  /** Embed `texts` (default task `retrieval.query`); one 768-dim vector each, aligned to input order. */
+  /**
+   * Embed `texts` (default task `retrieval.query`); one vector of
+   * `EMBEDDING_DIMS` values (768 by default) each, aligned to input order.
+   */
   embed(
     texts: string[],
     signal?: AbortSignal,

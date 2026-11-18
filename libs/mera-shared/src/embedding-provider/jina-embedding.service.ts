@@ -4,8 +4,7 @@ import {
   EmbeddingProvider,
   type EmbeddingTask,
 } from './embedding-provider.port';
-
-const EMBED_DIMS = 768;
+import { embeddingDims } from './embedding-config';
 
 type FetchFn = typeof fetch;
 
@@ -28,6 +27,7 @@ interface JinaEmbeddingResponse {
 export class JinaEmbeddingService implements EmbeddingProvider {
   private readonly url: string;
   private readonly apiKey: string;
+  private readonly dims: number;
   private readonly model: string;
   private readonly task: string;
   private readonly fetchFn: FetchFn;
@@ -45,6 +45,7 @@ export class JinaEmbeddingService implements EmbeddingProvider {
       'https://api.jina.ai/v1/embeddings',
     );
     this.apiKey = config.get<string>('JINA_API_KEY', '');
+    this.dims = embeddingDims(config);
     this.model = config.get<string>(
       'JINA_MODEL',
       'jina-embeddings-v5-text-nano',
@@ -138,12 +139,9 @@ export class JinaEmbeddingService implements EmbeddingProvider {
     // Re-order by `index` so alignment holds even if the API reorders.
     const out = new Array<number[]>(texts.length);
     for (const row of data) {
-      if (
-        !Array.isArray(row.embedding) ||
-        row.embedding.length !== EMBED_DIMS
-      ) {
+      if (!Array.isArray(row.embedding) || row.embedding.length !== this.dims) {
         throw new Error(
-          `Jina embedding for index ${row.index} is not ${EMBED_DIMS}-dim`,
+          `Jina embedding for index ${row.index} is not ${this.dims}-dim`,
         );
       }
       out[row.index] = row.embedding;

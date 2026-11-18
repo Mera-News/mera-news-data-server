@@ -1,7 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
+import { vectorMinScore } from '@mera/shared/embedding-provider/embedding-config';
 import {
-  VECTOR_SEARCH_DATA_RETRIEVAL_MIN_SCORE,
   VECTOR_SEARCH_DATA_RETRIEVAL_RESULT_LIMIT,
   VECTOR_SEARCH_DATA_RETRIEVAL_NUM_CANDIDATES,
 } from '../../../constants';
@@ -25,10 +26,15 @@ export interface SearchConfig {
 export class ArticleSearchService {
   private readonly logger = new Logger(ArticleSearchService.name);
 
+  private readonly minScore: number;
+
   constructor(
     @InjectModel(NewsArticle.name)
     private newsArticleModel: Model<NewsArticleDocument>,
-  ) {}
+    config: ConfigService,
+  ) {
+    this.minScore = vectorMinScore(config);
+  }
 
   /**
    * Vector search on embedding_article_data_retrieval using cosine similarity.
@@ -74,7 +80,7 @@ export class ArticleSearchService {
         },
         {
           $match: {
-            score: { $gte: VECTOR_SEARCH_DATA_RETRIEVAL_MIN_SCORE },
+            score: { $gte: this.minScore },
           },
         },
         { $limit: vectorSearchLimit },

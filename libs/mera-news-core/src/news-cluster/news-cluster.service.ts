@@ -4,6 +4,7 @@ import {
   NotFoundException,
   NotImplementedException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types, QueryFilter, PipelineStage } from 'mongoose';
 import {
@@ -18,12 +19,8 @@ import {
   ClusterArticleLink,
   ClusterArticleLinkDocument,
 } from '@mera/models/models/cluster-article-link.model';
-import {
-  encodeCursor,
-  decodeCursor,
-  BaseCursorPayload,
-  VECTOR_RETRIEVAL_MIN_SCORE,
-} from '@mera/shared';
+import { encodeCursor, decodeCursor, BaseCursorPayload } from '@mera/shared';
+import { vectorMinScore } from '@mera/shared/embedding-provider/embedding-config';
 import { Inject } from '@nestjs/common';
 import { EMBEDDING_PROVIDER, type EmbeddingProvider } from '@mera/news-core';
 import { NewsClustersResponse } from './dto/news-clusters-response.dto';
@@ -35,6 +32,7 @@ const OBJECT_ID_HEX = /^[0-9a-f]{24}$/i;
 @Injectable()
 export class NewsClusterService {
   private readonly logger = new Logger(NewsClusterService.name);
+  private readonly minScore: number;
 
   constructor(
     @InjectModel(NewsCluster.name)
@@ -45,7 +43,10 @@ export class NewsClusterService {
     private newsArticleModel: Model<NewsArticleDocument>,
     @Inject(EMBEDDING_PROVIDER)
     private readonly embeddingProvider: EmbeddingProvider,
-  ) {}
+    config: ConfigService,
+  ) {
+    this.minScore = vectorMinScore(config);
+  }
 
   /**
    * Resolve the live cluster an article currently belongs to, via its newest
@@ -254,7 +255,7 @@ export class NewsClusterService {
           },
         },
         { $addFields: { score: { $meta: 'vectorSearchScore' } } },
-        { $match: { score: { $gte: VECTOR_RETRIEVAL_MIN_SCORE } } },
+        { $match: { score: { $gte: this.minScore } } },
         { $project: { _id: 1 } },
       ])
       .exec();

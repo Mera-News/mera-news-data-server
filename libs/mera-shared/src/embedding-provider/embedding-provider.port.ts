@@ -1,7 +1,8 @@
 /**
  * EmbeddingProvider port (ports & adapters — business logic never imports the
  * Jina SDK). One call embeds a batch of texts under a given Jina task and
- * returns 768-dim vectors aligned to the input order. The batch sizing
+ * returns vectors of `EMBEDDING_DIMS` values (768 by default) aligned to the
+ * input order. The batch sizing
  * (Decision 2: ~500–1,000 texts/request, 2–3 in flight) is owned by the
  * MicroBatcher in the embedding service; the adapter just issues one request.
  *
@@ -17,7 +18,7 @@ export type EmbeddingTask =
   | 'text-matching';
 
 export interface EmbeddingProvider {
-  /** Embed `texts` under `task`; returns one 768-dim vector each, in order. */
+  /** Embed `texts` under `task`; returns one vector of `EMBEDDING_DIMS` values each, in order. */
   embed(
     texts: string[],
     task: EmbeddingTask,
