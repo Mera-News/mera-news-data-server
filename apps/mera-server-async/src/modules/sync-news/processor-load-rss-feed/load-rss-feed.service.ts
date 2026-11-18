@@ -48,10 +48,12 @@ import {
   ArticleFingerprint,
   ArticleFingerprintDocument,
 } from '@mera/models/models/article-fingerprint.model';
+import type { MediaCandidate } from '../../shared-utilities/rss-feed/rss-feed.service';
 import {
-  RSSFeedService,
-  type MediaCandidate,
-} from '../../shared-utilities/rss-feed/rss-feed.service';
+  SOURCE_CONNECTOR,
+  type SourceConnector,
+  type SourceFetchResult,
+} from '../../shared-utilities/source-connector/source-connector.port';
 import { FeedFetchError } from '../../shared-utilities/rss-feed/feed-fetch-error';
 import { sanitizeText } from '../../../utils/text-sanitizer';
 import { LanguageDetectionService } from '../../shared-utilities/language-detection/language-detection.service';
@@ -87,9 +89,7 @@ const SHED_QUARANTINE_CYCLES = 12;
 const SHED_QUARANTINE_MINUTES = 60;
 
 /** Provenance and bandwidth metadata for one fetch, as RSSFeedService reports it. */
-type FetchMeta = Awaited<
-  ReturnType<RSSFeedService['fetchRSSFeed']>
->['fetchMeta'];
+type FetchMeta = SourceFetchResult['fetchMeta'];
 
 export interface LoadRssFeedResult {
   success: boolean;
@@ -158,7 +158,7 @@ export class LoadRSSFeedService {
     private newsArticleModel: Model<NewsArticleDocument>,
     @InjectModel(ArticleFingerprint.name)
     private articleFingerprintModel: Model<ArticleFingerprintDocument>,
-    private rssFeedService: RSSFeedService,
+    @Inject(SOURCE_CONNECTOR) private readonly sourceConnector: SourceConnector,
     private languageDetectionService: LanguageDetectionService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
     @InjectQueue(QueueName.TRANSLATE_ARTICLE)
@@ -804,9 +804,9 @@ export class LoadRSSFeedService {
     // Always fetch the RSS feed first — frequency-based skipping is unreliable
     // because feeds can update at any time regardless of declared frequency.
     // Instead, we compare last_publish_date to decide whether to proceed.
-    let result: Awaited<ReturnType<RSSFeedService['fetchRSSFeed']>>;
+    let result: SourceFetchResult;
     try {
-      result = await this.rssFeedService.fetchRSSFeed(publicationSource);
+      result = await this.sourceConnector.fetchSource(publicationSource);
     } catch (error) {
       // SEAM 2 of 3, and the one that matters most. Our shared egress is down;
       // this feed is fine. NOTHING is written:

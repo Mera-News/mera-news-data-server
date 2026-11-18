@@ -46,6 +46,35 @@ const SEED = {
   ],
 };
 
+const feed = (host: string, name: string, language_code: string) => ({
+  uri: `https://${host}.example.test/${name}.xml`,
+  language_code,
+});
+const FILE_SEED = {
+  GBR: [
+    {
+      publication_name: 'Tide Post',
+      publication_website_uri: 'https://tide.example.test',
+      publication_rss_feed_uris: [
+        feed('tide', 'en', 'en'),
+        feed('tide', 'en-gb', 'en-GB'),
+        feed('tide', 'es', 'es'),
+        feed('tide', 'fr', 'fr'),
+      ],
+    },
+  ],
+  USA: [
+    {
+      publication_name: 'Prairie Wire',
+      publication_website_uri: 'https://prairie.example.test',
+      publication_rss_feed_uris: [feed('prairie', 'fr', 'fr')],
+    },
+  ],
+};
+const tide = (...names: string[]) =>
+  names.map((n) => `https://tide.example.test/${n}.xml`);
+const PRAIRIE = 'https://prairie.example.test/fr.xml';
+
 describe('load-rss command', () => {
   let app: INestApplicationContext;
   let dir: string;
@@ -132,6 +161,99 @@ describe('load-rss command', () => {
     expect(lantern).toMatchObject({
       is_active_codegen: false,
       codegen_status: 'invalid',
+    });
+  });
+  describe('file and selectors', () => {
+    let sources: Model<PublicationSource>;
+    beforeAll(() => {
+      writeFileSync(join(dir, 'custom-feeds.json'), JSON.stringify(FILE_SEED));
+      sources = app.get<Model<PublicationSource>>(
+        getModelToken(PublicationSource.name),
+        { strict: false },
+      );
+    });
+    beforeEach(async () => {
+      const db = app.get<Connection>(getConnectionToken()).db!;
+      for (const c of await db.collections()) await c.deleteMany({});
+    });
+
+    const run = async (options: Record<string, unknown>) => {
+      const cwd = process.cwd();
+      process.chdir(dir);
+      try {
+        await app.get(LoadRssCommand).run([], options);
+      } finally {
+        process.chdir(cwd);
+      }
+    };
+    const loaded = async () =>
+      (await sources.find().lean()).map((f) => f.feed_url).sort();
+
+    it('reads the file given by --file and not the bundled seed', async () => {
+      await run({ file: 'custom-feeds.json' });
+      expect(await loaded()).toEqual(
+        [...tide('en', 'en-gb', 'es', 'fr'), PRAIRIE].sort(),
+      );
+    });
+
+    it('names the path when the file cannot be read', async () => {
+      await expect(run({ file: 'missing.json' })).rejects.toThrow(
+        'missing.json',
+      );
+    });
+
+    it('country: loads every feed of that country only, in any case', async () => {
+      await run({ file: 'custom-feeds.json', only: ['country:gbr'] });
+      expect(await loaded()).toEqual(tide('en', 'en-gb', 'es', 'fr').sort());
+    });
+
+    it('language: matches the code and its regional variants, never another language', async () => {
+      await run({ file: 'custom-feeds.json', only: ['language:en'] });
+      expect(await loaded()).toEqual(tide('en', 'en-gb').sort());
+    });
+
+    it('a feed URL loads just that feed', async () => {
+      await run({ file: 'custom-feeds.json', only: [tide('es')[0]] });
+      expect(await loaded()).toEqual(tide('es'));
+    });
+
+    it('rejects a language prefix that is not a whole code', async () => {
+      await expect(
+        run({ file: 'custom-feeds.json', only: ['language:e'] }),
+      ).rejects.toThrow('language:e');
+    });
+
+    it('rejects a country that matches nothing', async () => {
+      await expect(
+        run({ file: 'custom-feeds.json', only: ['country:XXX'] }),
+      ).rejects.toThrow('country:XXX');
+    });
+
+    it('rejects an unknown selector form', async () => {
+      await expect(
+        run({ file: 'custom-feeds.json', only: ['gbr'] }),
+      ).rejects.toThrow(
+        'is not a feed URL, country:<ALPHA3>, language:<code> or all',
+      );
+    });
+
+    it('all loads everything and deletes nothing', async () => {
+      await sources.create({
+        publication_name: 'Old',
+        feed_url: 'https://old.example.test/x.xml',
+        type: 'rss-feed',
+        country_code: 'GBR',
+        category: 'general',
+      });
+      await run({ file: 'custom-feeds.json', only: ['all'] });
+      expect(await loaded()).toHaveLength(6);
+      expect(await loaded()).toContain('https://old.example.test/x.xml');
+    });
+
+    it('refuses --sync-delete together with a selector', async () => {
+      await expect(
+        run({ file: 'custom-feeds.json', only: ['all'], syncDelete: true }),
+      ).rejects.toThrow('--sync-delete');
     });
   });
 });

@@ -52,6 +52,46 @@ interface FeedsData {
   [countryCode: string]: PublicationEntry[];
 }
 
+type Selector =
+  | { kind: 'url' | 'country' | 'language'; value: string; raw: string }
+  | { kind: 'all'; raw: string };
+
+function parseSelector(raw: string): Selector {
+  if (/^https?:\/\//.test(raw)) return { kind: 'url', value: raw, raw };
+  if (raw === 'all') return { kind: 'all', raw };
+  const m = /^(country|language):(.+)$/.exec(raw);
+  if (!m) {
+    throw new Error(
+      `--only "${raw}" is not a feed URL, country:<ALPHA3>, language:<code> or all`,
+    );
+  }
+  const kind = m[1] as 'country' | 'language';
+  return {
+    kind,
+    value: kind === 'country' ? m[2].toUpperCase() : m[2].toLowerCase(),
+    raw,
+  };
+}
+
+function selectorMatches(
+  sel: Selector,
+  feed: FeedUri,
+  countryCode: string,
+): boolean {
+  switch (sel.kind) {
+    case 'all':
+      return true;
+    case 'url':
+      return feed.uri === sel.value;
+    case 'country':
+      return countryCode.toUpperCase() === sel.value;
+    case 'language': {
+      const lang = (feed.language_code ?? '').toLowerCase();
+      return lang === sel.value || lang.startsWith(`${sel.value}-`);
+    }
+  }
+}
+
 @Injectable()
 export class NewsFeedListOfCountriesService {
   private readonly logger = new Logger(NewsFeedListOfCountriesService.name);
@@ -64,42 +104,72 @@ export class NewsFeedListOfCountriesService {
   ) {}
 
   /**
-   * `onlyFeedUrls` (the --only CLI flag) upserts just those feeds and their
-   * publishers, for adding a publisher in seconds instead of the ~30 min full
-   * pass. It skips the delete-sync, which would read every other feed as absent.
+   * `only` (the --only CLI flag) upserts just the feeds its selectors match,
+   * and their publishers, for adding a publisher in seconds instead of the
+   * ~30 min full pass. A selector is a feed URL, `country:<ALPHA3>`,
+   * `language:<code>` or `all`. It skips the delete-sync, which would read
+   * every other feed as absent. `file` is the seed path, relative to the
+   * working directory.
    */
-  async loadFeeds(syncDelete = false, onlyFeedUrls?: string[]): Promise<void> {
-    const only = onlyFeedUrls?.length ? new Set(onlyFeedUrls) : null;
+  async loadFeeds({
+    syncDelete = false,
+    only: onlySelectors,
+    file,
+  }: {
+    syncDelete?: boolean;
+    only?: string[];
+    file?: string;
+  } = {}): Promise<void> {
+    const only = onlySelectors?.length
+      ? onlySelectors.map(parseSelector)
+      : null;
     if (only && syncDelete) {
       throw new Error('--only cannot be combined with --sync-delete');
     }
 
-    // Use absolute path from project root
     const projectRoot = process.cwd();
-    const filePath = path.join(
-      projectRoot,
-      'apps',
-      'mera-scripts',
-      'seed-data',
-      'active-feeds-auto-generated.json',
-    );
+    const filePath = file
+      ? path.resolve(projectRoot, file)
+      : path.join(
+          projectRoot,
+          'apps',
+          'mera-scripts',
+          'seed-data',
+          'active-feeds-auto-generated.json',
+        );
 
     try {
-      // Read and parse JSON file
-      const fileContent = fs.readFileSync(filePath, 'utf-8');
-      const feedsData = JSON.parse(fileContent) as FeedsData;
+      let feedsData: FeedsData;
+      try {
+        feedsData = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as FeedsData;
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        throw new Error(`Cannot read feed file ${filePath}: ${reason}`, {
+          cause: err,
+        });
+      }
+
+      // A feed is wanted when any selector matches it. A country selector
+      // takes every feed of that country, so it is matched on the country.
+      const wanted = (feed: FeedUri, countryCode: string): boolean =>
+        !only || only.some((sel) => selectorMatches(sel, feed, countryCode));
 
       if (only) {
-        const seedUrls = new Set(
-          Object.values(feedsData).flatMap((pubs) =>
-            pubs.flatMap((p) => p.publication_rss_feed_uris.map((f) => f.uri)),
-          ),
-        );
-        const missing = [...only].filter((u) => !seedUrls.has(u));
         // A typo must fail loudly, not report a clean run that wrote nothing.
+        const missing = only.filter(
+          (sel) =>
+            sel.kind !== 'all' &&
+            !Object.entries(feedsData).some(([cc, pubs]) =>
+              pubs.some((p) =>
+                p.publication_rss_feed_uris.some((f) =>
+                  selectorMatches(sel, f, cc),
+                ),
+              ),
+            ),
+        );
         if (missing.length > 0) {
           throw new Error(
-            `--only feed(s) not in the seed: ${missing.join(', ')}`,
+            `--only matches nothing in ${filePath}: ${missing.map((m) => m.raw).join(', ')}`,
           );
         }
       }
@@ -122,8 +192,9 @@ export class NewsFeedListOfCountriesService {
 
         for (const publication of publications) {
           if (
-            only &&
-            !publication.publication_rss_feed_uris.some((f) => only.has(f.uri))
+            !publication.publication_rss_feed_uris.some((f) =>
+              wanted(f, countryCode),
+            )
           ) {
             continue;
           }
@@ -199,7 +270,7 @@ export class NewsFeedListOfCountriesService {
 
             // Process each feed URI for this publication
             for (const feedUri of publication.publication_rss_feed_uris) {
-              if (only && !only.has(feedUri.uri)) continue;
+              if (!wanted(feedUri, countryCode)) continue;
               seedFeedUrls.add(feedUri.uri);
 
               try {
@@ -348,7 +419,7 @@ export class NewsFeedListOfCountriesService {
       });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Failed to read or parse JSON file: ${errorMessage}`);
+      this.logger.error(`load-rss failed: ${errorMessage}`);
       throw err;
     }
   }
