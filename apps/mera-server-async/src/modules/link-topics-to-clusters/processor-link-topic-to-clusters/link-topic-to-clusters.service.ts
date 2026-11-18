@@ -165,7 +165,7 @@ export class LinkTopicToClusterService {
       }
 
       this.logger.debug(
-        `Topic "${topic.news_topic_text}" (${topicId}): linked ${articleIds.length} articles → ${clusterIds.length} clusters`,
+        `Topic ${topicId}: linked ${articleIds.length} articles → ${clusterIds.length} clusters`,
       );
 
       return {

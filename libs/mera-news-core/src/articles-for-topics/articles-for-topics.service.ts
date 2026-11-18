@@ -837,8 +837,7 @@ export class ArticlesForTopicsService {
     const { kept, removed } = filterByMustMatch(names, items, getText);
     if (removed > 0) {
       this.logger.log(
-        `${kind} (${seam}): topic="${topicText}" ` +
-          `names=[${names.join(',')}] kept=${kept.length} removed=${removed}`,
+        `${kind} (${seam}): kept=${kept.length} removed=${removed}`,
       );
     }
     return kept;
@@ -1027,9 +1026,7 @@ export class ArticlesForTopicsService {
           // Per-topic isolation: a single failed topic must not fail the query.
           vectorErrors += 1;
           this.logger.error(
-            `articleIdsForTopics: cold topic failed (${c.input.topicText}): ${
-              (err as Error).message
-            }`,
+            `articleIdsForTopics: cold topic failed: ${(err as Error).message}`,
           );
           c.entries = [];
         } finally {
