@@ -42,8 +42,8 @@ export class Place {
   // the human region name, always including `normalized` itself (search_keys ⊇
   // {normalized}). This is what lets "porto santo" reach Vila Baleira and
   // "madeira" list Madeiran towns. Multikey btree index below.
-  // NOTE: autoIndex is OFF in prod — this index must be created MANUALLY
-  // (createIndex) on deploy, same as `normalized`.
+  // Mongoose builds it at boot (autoIndex is on), same as `normalized`; a
+  // deployment with autoIndex off creates it by hand.
   @Field(() => [String])
   @Prop({ type: [String], index: true })
   search_keys!: string[];
@@ -94,6 +94,6 @@ export class Place {
 export const PlaceSchema = SchemaFactory.createForClass(Place);
 
 // Btree prefix-search index on the lowercase key. Serves the anchored
-// `^<query>` regex in placeSearch. NOTE: autoIndex is OFF in prod — this index
-// must be created MANUALLY (createIndex) on deploy.
+// `^<query>` regex in placeSearch. Mongoose builds it at boot (autoIndex is
+// on); a deployment with autoIndex off creates it by hand.
 PlaceSchema.index({ normalized: 1 });

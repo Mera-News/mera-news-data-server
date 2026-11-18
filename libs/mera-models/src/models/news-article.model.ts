@@ -486,14 +486,14 @@ NewsArticleSchema.index({ embedding_status: 1 }, { sparse: true });
 
 // Tagging: the pre-process-articles-fanout claim query filters on tags_status
 // (missing / TAGGING_FAILED under attempt cap / stale TAGGING_ENQUEUED). Sparse
-// since only the served subset is ever tagged. NOTE: autoIndex is OFF in prod —
-// this index must be created MANUALLY (createIndex) on deploy.
+// since only the served subset is ever tagged. Mongoose builds it at boot
+// (autoIndex is on); a deployment with autoIndex off creates it by hand.
 NewsArticleSchema.index({ tags_status: 1 }, { sparse: true });
 
 // Insecure-URL exclusion: every serving path adds `{url_security_state: {$ne:
 // 'insecure'}}` alongside its own recency bound, so the exclusion and the 24h/48h
-// window are served by one index. NOTE: autoIndex is OFF in prod — this index
-// must be created MANUALLY (createIndex) on deploy.
+// window are served by one index. Mongoose builds it at boot (autoIndex is
+// on); a deployment with autoIndex off creates it by hand.
 NewsArticleSchema.index({ url_security_state: 1, createdAt: -1 });
 
 // 48h retention enforced by a MongoDB TTL keyed on the payload `ingestedAt`
