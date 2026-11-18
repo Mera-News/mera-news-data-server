@@ -101,7 +101,8 @@ export class StructuredLoggerModule {
                 headers?: object;
               }) => ({
                 method: req.method,
-                url: req.url,
+                // The query string can carry the whole request text of a GET.
+                url: req.url.split('?')[0],
               }),
               // Reduce response log verbosity
               res: (res: { statusCode: number }) => ({

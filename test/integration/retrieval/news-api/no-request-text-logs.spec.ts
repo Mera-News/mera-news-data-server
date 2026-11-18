@@ -1,0 +1,120 @@
+import fs from 'fs';
+import { Logger } from '@nestjs/common';
+import { bootNewsApi, type NewsApi } from '../support/boot-news-api';
+
+const MARKER = 'zq7marker41';
+
+/**
+ * Everything the Nest logger, stdout, stderr and writes straight to descriptors 1 and 2 receive
+ * until `restore()`. The request logger writes to the descriptor, not through `process.stdout`.
+ */
+function captureLogs() {
+  const lines: string[] = [];
+  const push = (...args: unknown[]) => {
+    lines.push(
+      args
+        .map((a) => (typeof a === 'string' ? a : JSON.stringify(a)))
+        .join(' '),
+    );
+  };
+  Logger.overrideLogger({
+    log: push,
+    error: push,
+    warn: push,
+    debug: push,
+    verbose: push,
+    fatal: push,
+  });
+  const out = jest.spyOn(process.stdout, 'write').mockImplementation((c) => {
+    push(String(c));
+    return true;
+  });
+  const err = jest.spyOn(process.stderr, 'write').mockImplementation((c) => {
+    push(String(c));
+    return true;
+  });
+  const realWriteSync = fs.writeSync;
+  const fdWrite = jest.spyOn(fs, 'writeSync').mockImplementation(((
+    fd: number,
+    chunk: unknown,
+    ...rest: unknown[]
+  ) => {
+    if (fd !== 1 && fd !== 2) {
+      return (realWriteSync as (...a: unknown[]) => number)(fd, chunk, ...rest);
+    }
+    push(String(chunk));
+    return Buffer.byteLength(String(chunk));
+  }) as typeof fs.writeSync);
+  const realWrite = fs.write;
+  const fdWriteAsync = jest.spyOn(fs, 'write').mockImplementation(((
+    fd: number,
+    ...rest: unknown[]
+  ) => {
+    if (fd !== 1 && fd !== 2) {
+      return (realWrite as (...a: unknown[]) => void)(fd, ...rest);
+    }
+    push(String(rest[0]));
+    const done = rest[rest.length - 1];
+    if (typeof done === 'function') {
+      (done as (e: null, n: number) => void)(
+        null,
+        Buffer.byteLength(String(rest[0])),
+      );
+    }
+  }) as unknown as typeof fs.write);
+  return {
+    lines,
+    restore() {
+      fdWriteAsync.mockRestore();
+      out.mockRestore();
+      err.mockRestore();
+      fdWrite.mockRestore();
+      Logger.overrideLogger(false);
+    },
+  };
+}
+
+describe('request text in the news API logs', () => {
+  let api: NewsApi;
+
+  beforeAll(async () => {
+    api = await bootNewsApi({ env: { LOG_LEVEL: 'info' } });
+  });
+  afterAll(() => api.close());
+
+  it('logs no request text for a valid request, a validation failure, a throwing resolver or a GET', async () => {
+    const capture = captureLogs();
+    try {
+      await api.gql(
+        'query($q: String!) { searchPublishers(query: $q) { publishers { _id } } }',
+        { q: MARKER },
+      );
+      await api.gql(
+        'query($ids: [ID!]!) { articlesForStories(articleIds: $ids) { articles { _id } } }',
+        { ids: MARKER },
+      );
+      await api.gql(
+        'query($q: String!) { searchPublishers(query: $q) { publishers { _id } } }',
+        { q: MARKER.repeat(6) },
+      );
+      await api
+        .http()
+        .get('/graphql')
+        .query({
+          query: `{ searchPublishers(query: "${MARKER}") { publishers { _id } } }`,
+          variables: JSON.stringify({ q: MARKER }),
+        })
+        .set('x-api-key', 'news-api-test-key');
+      // The logger writes after the response is sent.
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    } finally {
+      capture.restore();
+    }
+
+    // Positive control: the capture sees the request log lines.
+    expect(
+      capture.lines.filter((l) => l.includes('"/graphql')).length,
+    ).toBeGreaterThanOrEqual(4);
+    expect(capture.lines.filter((l) => l.includes(MARKER))).toEqual([]);
+  });
+});
