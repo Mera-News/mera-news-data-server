@@ -1,7 +1,11 @@
 import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { GraphQLError } from 'graphql';
-import { assertKeysetCursor } from './cursor-guard';
+import {
+  assertCursorLength,
+  assertKeysetCursor,
+  assertOffsetCursor,
+} from './cursor-guard';
 import {
   Args,
   Context,
@@ -280,7 +284,7 @@ export class InternalNewsResolver {
         `countryCode exceeds the maximum length of ${MAX_COUNTRY_CODE_LENGTH} characters`,
       );
     }
-    assertCursorLength(after);
+    assertOffsetCursor(after);
     const window = windowHours ?? DEFAULT_HEADLINE_VIEW_WINDOW_HOURS;
     if (!(HEADLINE_VIEW_WINDOWS_HOURS as readonly number[]).includes(window)) {
       throw new GraphQLError(
@@ -722,7 +726,6 @@ const MAX_ARTICLE_IDS_PER_REQUEST = 50;
 /** Same ceiling as the app-facing API: the app's feed window, with room. */
 const MAX_MEMBERSHIP_ARTICLE_IDS = 500;
 const MAX_COUNTRY_CODE_LENGTH = 8;
-const MAX_CURSOR_LENGTH = 512;
 const MIN_SEARCH_QUERY_LENGTH = 2;
 const MAX_SEARCH_QUERY_LENGTH = 64;
 const MAX_SEARCH_PAGE_SIZE = 50;
@@ -744,14 +747,6 @@ const MAX_RELATED_CONTEXT_ITEMS = 50;
 const MAX_RELATED_CONTEXT_STRING_LENGTH = 64;
 const MAX_PROFILE_NAME_LENGTH = 200;
 const MAX_PROFILE_LANGUAGE_LENGTH = 16;
-
-function assertCursorLength(after: string | null | undefined): void {
-  if (after && after.length > MAX_CURSOR_LENGTH) {
-    throw new BadRequestException(
-      `after exceeds the maximum length of ${MAX_CURSOR_LENGTH} characters`,
-    );
-  }
-}
 
 /** Names the limit and never the value: a preference is the reader's own text. */
 function assertRelatedContextCaps(

@@ -13,8 +13,8 @@
  * is stale. Re-copy it and read the diff.
  *
  * Only documents that validate against this schema are listed. The ones that
- * need fields this API does not serve (world headlines, canonical topics,
- * search over articles) are left out on purpose.
+ * need fields this API does not serve (canonical topics, search over
+ * articles) are left out on purpose.
  */
 export const CLIENT_DOCUMENTS: Record<string, string> = {
   AllCountries: `
@@ -437,6 +437,52 @@ query GetArticleIdsForPersona($query: PersonaQueryInput!) {
         endCursor
       }
       editionBuiltAt
+    }
+  }
+`,
+
+  GetWorldHeadlines: `
+  query GetWorldHeadlines($countryCode: String, $first: Int, $after: String, $windowHours: Int, $canonicalTopicIds: [ID!]) {
+    worldHeadlines(countryCode: $countryCode, first: $first, after: $after, windowHours: $windowHours, canonicalTopicIds: $canonicalTopicIds) {
+
+      headlines {
+        stableClusterId
+        clusterSize
+        article {
+          _id
+          title
+          title_en_internal_only
+          description
+          description_en_internal_only
+          pubDate
+          article_url
+          image_url
+          creator
+          source_uri
+          original_language_code
+          geo_tags {
+            city
+            region
+            countryCode
+          }
+          event_type
+          entities
+          publicationSource {
+            _id
+            publication_name
+            country_code
+          }
+        }
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+      editionBuiltAt
+      facets {
+        topicId
+        count
+      }
     }
   }
 `,

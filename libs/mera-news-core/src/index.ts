@@ -124,6 +124,13 @@ export {
 export { PublicationProfileService } from './publication-profile/publication-profile.service';
 export { PublicationProfile } from './publication-profile/dto/publication-profile.dto';
 
+// World headlines
+export { WorldHeadlinesService } from './world-headlines/world-headlines.service';
+export {
+  CanonicalTopicFacet,
+  WorldHeadlinesResponse,
+} from './world-headlines/world-headlines.dto';
+
 // Place search and the server status answer
 export { PlaceService } from './place/place.service';
 export { PlaceModule } from './place/place.module';

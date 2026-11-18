@@ -4,6 +4,8 @@ import { Types } from 'mongoose';
 import { bootNewsApi, type NewsApi } from '../support/boot-news-api';
 
 const MARKER = 'zq7marker41';
+// Shaped like an id, so it passes the filter's own check.
+const HEX_MARKER = 'abcdef0123456789abcdef01';
 
 /**
  * Everything the Nest logger, stdout, stderr and writes straight to descriptors 1 and 2 receive
@@ -201,5 +203,34 @@ describe('request text in the news API logs', () => {
       capture.lines.filter((l) => l.includes('"/graphql')).length,
     ).toBeGreaterThanOrEqual(3);
     expect(capture.lines.filter((l) => l.includes(MARKER))).toEqual([]);
+  });
+
+  it('logs no topic filter value for a valid world headlines request, a refused one or a wrong type', async () => {
+    const capture = captureLogs();
+    const doc =
+      'query($ids: [ID!], $after: String) { worldHeadlines(countryCode: "ZZZ", canonicalTopicIds: $ids, after: $after) { unavailableReason headlines { stableClusterId } } }';
+    try {
+      const valid = await api.gql<{
+        worldHeadlines: { unavailableReason: string | null };
+      }>(doc, { ids: [HEX_MARKER] });
+      // The resolver ran: a filter with no edition answers a reason, not a validation error.
+      expect(valid.body.errors).toBeUndefined();
+      expect(valid.body.data?.worldHeadlines.unavailableReason).toBe(
+        'NO_EDITION',
+      );
+      const invalid = await api.gql(doc, { ids: [MARKER] });
+      expect(invalid.body.errors?.[0].message).toMatch(/24/);
+      await api.gql(doc, { ids: [HEX_MARKER], after: MARKER });
+      await api.gql(doc, { ids: { text: MARKER } });
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    } finally {
+      capture.restore();
+    }
+
+    expect(
+      capture.lines.filter((l) => l.includes('"/graphql')).length,
+    ).toBeGreaterThanOrEqual(4);
+    expect(capture.lines.filter((l) => l.includes(MARKER))).toEqual([]);
+    expect(capture.lines.filter((l) => l.includes(HEX_MARKER))).toEqual([]);
   });
 });

@@ -26,6 +26,7 @@ import {
   NoopArticleQuota,
   PlaceModule,
   ServerStatusService,
+  WorldHeadlinesService,
 } from '@mera/news-core';
 import {
   API_KEY_VERIFIER,
@@ -39,6 +40,7 @@ import {
   InternalNewsResolver,
 } from './modules/internal-news.resolver';
 import { NewsClusterArticlesResolver } from './modules/news-cluster-articles.resolver';
+import { WorldHeadlinesResolver } from './modules/world-headlines.resolver';
 import { PublicationProfileService } from '@mera/news-core/publication-profile/publication-profile.service';
 import {
   ArticleSourceUriResolver,
@@ -238,6 +240,8 @@ export function openRateLimit(config: ConfigService): number {
     PublicSourceResolver,
     ArticleSourceUriResolver,
     NewsClusterArticlesResolver,
+    WorldHeadlinesResolver,
+    WorldHeadlinesService,
     PublicationProfileService,
     ServerStatusService,
     // Global, so a new resolver is protected by default rather than by
