@@ -67,6 +67,8 @@ jobs:
       EMBEDDING_PROVIDER: fake
       TRANSLATION_PROVIDER: fake
       ARTICLE_ENRICHMENT_PROVIDER: fake
+      # The fakes are refused under NODE_ENV=production without this.
+      ALLOW_FAKE_PROVIDERS: "true"
       HTTP_UPGRADE_PROBE_ENABLED: "false"
     steps:
       - uses: actions/checkout@v4
