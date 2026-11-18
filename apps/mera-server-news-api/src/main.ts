@@ -6,7 +6,8 @@ import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { Logger } from 'nestjs-pino';
 import { readText } from '@mera/shared/config/env-choice';
-import { AppModule, newsApiOpen } from './app.module';
+import { AppModule } from './app.module';
+import { newsApiOpen } from './open-mode';
 
 /**
  * Internal news API bootstrap.

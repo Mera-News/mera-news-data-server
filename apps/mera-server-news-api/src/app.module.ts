@@ -17,12 +17,12 @@ import {
   type CacheStore,
   normalizeCacheNamespace,
 } from '@mera/shared';
-import { readBool, readText } from '@mera/shared/config/env-choice';
 import { ModelsNewsModule } from '@mera/models/models/models-news.module';
 import {
   ARTICLE_QUOTA,
   EmbeddingProviderModule,
   MeraNewsCoreModule,
+  NewsSearchService,
   NoopArticleQuota,
   PlaceModule,
   ServerStatusService,
@@ -39,7 +39,9 @@ import {
   InternalNewsPublisherFieldResolver,
   InternalNewsResolver,
 } from './modules/internal-news.resolver';
+import { newsApiOpen, openRateLimit } from './open-mode';
 import { NewsClusterArticlesResolver } from './modules/news-cluster-articles.resolver';
+import { NewsSearchResolver } from './modules/news-search.resolver';
 import { WorldHeadlinesResolver } from './modules/world-headlines.resolver';
 import { PublicationProfileService } from '@mera/news-core/publication-profile/publication-profile.service';
 import {
@@ -54,25 +56,6 @@ import {
 } from './query-limits';
 
 const DEFAULT_CACHE_TTL_MS = 3_600_000;
-const DEFAULT_OPEN_RATE_LIMIT = 60;
-
-/** `NEWS_API_OPEN`: serve without a key. `true` or `false` only. */
-export function newsApiOpen(config: ConfigService): boolean {
-  return readBool(config, 'NEWS_API_OPEN', false);
-}
-
-/** `NEWS_API_OPEN_RATE_LIMIT`: requests a minute per address in open mode. */
-export function openRateLimit(config: ConfigService): number {
-  const text = readText(config, 'NEWS_API_OPEN_RATE_LIMIT');
-  if (text === '') return DEFAULT_OPEN_RATE_LIMIT;
-  const n = Number(text);
-  if (!Number.isInteger(n) || n <= 0) {
-    throw new Error(
-      `NEWS_API_OPEN_RATE_LIMIT="${text}" must be a positive whole number`,
-    );
-  }
-  return n;
-}
 
 /**
  * `mera-server-news-api` — the INTERNAL news surface.
@@ -242,6 +225,8 @@ export function openRateLimit(config: ConfigService): number {
     NewsClusterArticlesResolver,
     WorldHeadlinesResolver,
     WorldHeadlinesService,
+    NewsSearchResolver,
+    NewsSearchService,
     PublicationProfileService,
     ServerStatusService,
     // Global, so a new resolver is protected by default rather than by

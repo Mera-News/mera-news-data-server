@@ -13,8 +13,8 @@
  * is stale. Re-copy it and read the diff.
  *
  * Only documents that validate against this schema are listed. The ones that
- * need fields this API does not serve (canonical topics, search over
- * articles) are left out on purpose.
+ * need fields this API does not serve (canonical topics) are left out on
+ * purpose.
  */
 export const CLIENT_DOCUMENTS: Record<string, string> = {
   AllCountries: `
@@ -786,6 +786,20 @@ query GetArticleIdsForPersona($query: PersonaQueryInput!) {
       countryName
       sourceNames
       subscriptionUri
+    }
+  }
+`,
+
+  SearchNews: `
+  query SearchNews($query: String!, $limit: Int) {
+    searchNews(query: $query, limit: $limit) {
+      _id
+      title_en
+      image_url
+      publication_name
+      country_code
+      pubDate
+      score
     }
   }
 `,

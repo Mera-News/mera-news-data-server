@@ -2,7 +2,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   newsApiOpen,
   openRateLimit,
-} from '../../../../apps/mera-server-news-api/src/app.module';
+} from '../../../../apps/mera-server-news-api/src/open-mode';
 import { bootNewsApi, type NewsApi } from '../support/boot-news-api';
 
 const COUNTRIES = '{ allCountries }';

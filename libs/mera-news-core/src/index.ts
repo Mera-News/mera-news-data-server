@@ -131,6 +131,14 @@ export {
   WorldHeadlinesResponse,
 } from './world-headlines/world-headlines.dto';
 
+// News search
+export {
+  NewsSearchService,
+  DEFAULT_SEARCH_LIMIT,
+  MAX_SEARCH_LIMIT,
+} from './news-search/news-search.service';
+export { NewsSearchHit } from './news-search/news-search.dto';
+
 // Place search and the server status answer
 export { PlaceService } from './place/place.service';
 export { PlaceModule } from './place/place.module';

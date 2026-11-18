@@ -1,7 +1,10 @@
 import fs from 'fs';
 import { Logger } from '@nestjs/common';
 import { Types } from 'mongoose';
+import { EMBEDDING_PROVIDER, FakeEmbeddingProvider } from '@mera/news-core';
+import { installAtlasSearchFake } from '../../../harness/atlas-search-fake';
 import { bootNewsApi, type NewsApi } from '../support/boot-news-api';
+import { seedArticle, seedSource } from '../support/fixtures';
 
 const MARKER = 'zq7marker41';
 // Shaped like an id, so it passes the filter's own check.
@@ -232,5 +235,128 @@ describe('request text in the news API logs', () => {
     ).toBeGreaterThanOrEqual(4);
     expect(capture.lines.filter((l) => l.includes(MARKER))).toEqual([]);
     expect(capture.lines.filter((l) => l.includes(HEX_MARKER))).toEqual([]);
+  });
+});
+
+describe('request text in the news API logs: search', () => {
+  let api: NewsApi;
+  let fake: ReturnType<typeof installAtlasSearchFake> | undefined;
+  // A provider error can carry the text it was asked to embed.
+  let embedFails = false;
+  const provider = {
+    embed(texts: string[]) {
+      if (embedFails) {
+        return Promise.reject(
+          Object.assign(new Error(`provider rejected ${texts.join(' ')}`), {
+            code: 'EPROVIDER',
+          }),
+        );
+      }
+      return new FakeEmbeddingProvider().embed(texts);
+    },
+  };
+  const doc =
+    'query($q: String!) { searchNews(query: $q) { _id title_en score } }';
+
+  beforeAll(async () => {
+    api = await bootNewsApi({
+      env: { LOG_LEVEL: 'info' },
+      override: (b) =>
+        b.overrideProvider(EMBEDDING_PROVIDER).useValue(provider),
+    });
+  });
+  afterAll(() => api.close());
+  afterEach(() => {
+    fake?.uninstall();
+    fake = undefined;
+    embedFails = false;
+  });
+
+  it('logs no search text for a valid query, a too long one or one that fails on both legs', async () => {
+    fake = installAtlasSearchFake();
+    await api.resetDb();
+    const source = await seedSource(api.connection);
+    await seedArticle(api.connection, {
+      source,
+      vector: FakeEmbeddingProvider.vectorFor(MARKER),
+    });
+    const capture = captureLogs();
+    try {
+      const valid = await api.gql<{ searchNews: { _id: string }[] }>(doc, {
+        q: MARKER,
+      });
+      // The resolver ran: the seeded match comes back, not an error.
+      expect(valid.body.errors).toBeUndefined();
+      expect(valid.body.data?.searchNews).toHaveLength(1);
+
+      const long = await api.gql(doc, { q: MARKER.repeat(20) });
+      expect(long.body.errors?.[0].extensions?.code).toBe('QUERY_TOO_LONG');
+
+      // The text index is absent and the provider fails with the text in its message.
+      embedFails = true;
+      const both = await api.gql(doc, { q: `${MARKER} again` });
+      expect(both.body.errors?.[0].extensions?.code).toBe('SEARCH_UNAVAILABLE');
+      embedFails = false;
+
+      // Neither index exists: the database error is logged by name only.
+      fake.uninstall();
+      fake = undefined;
+      const none = await api.gql(doc, { q: `${MARKER} once more` });
+      expect(none.body.errors?.[0].extensions?.code).toBe('SEARCH_UNAVAILABLE');
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    } finally {
+      capture.restore();
+    }
+
+    expect(
+      capture.lines.filter((l) => l.includes('"/graphql')).length,
+    ).toBeGreaterThanOrEqual(4);
+    // The failure was logged, and without the text.
+    expect(capture.lines.some((l) => l.includes('both legs failed'))).toBe(
+      true,
+    );
+    expect(capture.lines.filter((l) => l.includes(MARKER))).toEqual([]);
+  });
+});
+
+describe('search logs when the embedding provider fails', () => {
+  let api: NewsApi;
+  beforeAll(async () => {
+    api = await bootNewsApi({
+      env: { SEARCH_CACHE_SECRET: 'log-test-secret' },
+      override: (b) =>
+        b.overrideProvider(EMBEDDING_PROVIDER).useValue({
+          embed: () =>
+            Promise.reject(
+              Object.assign(new Error(`provider echoed ${MARKER}`), {
+                code: 'PROVIDER_DOWN',
+              }),
+            ),
+        }),
+    });
+  });
+  afterAll(() => api.close());
+
+  it('logs the error name and code only, never the query or the message', async () => {
+    const capture = captureLogs();
+    let res;
+    try {
+      res = await api.gql<{ searchNews: unknown[] }>(
+        'query($q: String!) { searchNews(query: $q) { _id } }',
+        { q: MARKER },
+      );
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    } finally {
+      capture.restore();
+    }
+
+    expect(res.body.errors?.[0].extensions?.code).toBe('SEARCH_UNAVAILABLE');
+    // Positive control: the failure line was written, with name and code.
+    const failure = capture.lines.filter((l) =>
+      l.includes('searchNews: both legs failed'),
+    );
+    expect(failure.length).toBeGreaterThan(0);
+    expect(failure.some((l) => l.includes('PROVIDER_DOWN'))).toBe(true);
+    expect(capture.lines.filter((l) => l.includes(MARKER))).toEqual([]);
   });
 });

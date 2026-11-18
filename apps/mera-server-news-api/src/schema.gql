@@ -239,6 +239,29 @@ type NewsPublishersResponse {
   pageInfo: CursorPageInfo!
 }
 
+"""
+A hybrid (text + semantic) search hit. Deliberately headline-only: hydrate the ids you want through articlesForTopicsByIds to get body text and the link.
+"""
+type NewsSearchHit {
+  _id: ID!
+
+  """ISO-3166 alpha-2 of the publisher."""
+  country_code: String
+  image_url: String
+
+  """Publication timestamp (ISO 8601)."""
+  pubDate: String!
+  publication_name: String
+
+  """
+  Reciprocal-rank-fusion score across the text and semantic legs. Ordering signal only, with no absolute scale. Do not threshold on it.
+  """
+  score: Float!
+
+  """English headline (translated at ingest)."""
+  title_en: String!
+}
+
 type NewsServerStatus {
   embeddingModel: String
   headlineEditionsBuilt: Boolean!
@@ -483,6 +506,15 @@ type Query {
     sortMode: RelatedSortMode = RELEVANCE
     stableClusterId: String
   ): RelatedArticlesPage!
+
+  """
+  Hybrid text + semantic search over the last 48h of articles. Headline-only results, hydrate ids via articlesForTopicsByIds. Capped at 25 results.
+  """
+  searchNews(
+    """Max results, clamped to 25."""
+    limit: Int
+    query: String!
+  ): [NewsSearchHit!]!
   searchPublishers(
     """Cursor to fetch items after"""
     after: String

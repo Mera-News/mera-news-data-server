@@ -10,6 +10,7 @@ import {
   InternalNewsResolver,
 } from './internal-news.resolver';
 import { NewsClusterArticlesResolver } from './news-cluster-articles.resolver';
+import { NewsSearchResolver } from './news-search.resolver';
 import { WorldHeadlinesResolver } from './world-headlines.resolver';
 import { PublicSourceResolver } from '@mera/news-core/source-url/source-url.resolvers';
 import { CLIENT_DOCUMENTS } from './client-documents';
@@ -46,6 +47,7 @@ const EXPECTED_OPERATIONS = [
   'PlaceSearch',
   'PublicationProfile',
   'PublicationSourcesForNewsPublisher',
+  'SearchNews',
   'SearchPublishers',
 ];
 
@@ -68,6 +70,7 @@ describe('client and app news documents against the news API schema', () => {
           PublicSourceResolver,
           NewsClusterArticlesResolver,
           WorldHeadlinesResolver,
+          NewsSearchResolver,
         ]);
     } finally {
       await app.close();
