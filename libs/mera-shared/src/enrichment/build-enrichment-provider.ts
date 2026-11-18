@@ -1,5 +1,6 @@
 import type { ConfigService } from '@nestjs/config';
 import type { Model } from 'mongoose';
+import { assertFakeAllowed, readChoice } from '../config/env-choice';
 import { JobLogger } from '../job-logger/job-logger';
 import type { ArticleEnrichmentProvider } from './article-enrichment-provider.port';
 import { FakeEnrichmentProvider } from './fake-enrichment.provider';
@@ -11,7 +12,7 @@ import { LazyPlaceGazetteer, type PlaceRow } from './place-gazetteer';
  * The one provider switch (`ARTICLE_ENRICHMENT_PROVIDER=gemini|openrouter|fake`,
  * default gemini), shared by the async worker's composition root and the
  * backfill command so the two can never bind different adapters for the same
- * env. Anything unrecognised binds Gemini, as before.
+ * env. Any other value fails at boot.
  */
 export function buildArticleEnrichmentProvider(opts: {
   config: ConfigService;
@@ -20,10 +21,16 @@ export function buildArticleEnrichmentProvider(opts: {
   loadPlaces: () => Promise<PlaceRow[]>;
 }): ArticleEnrichmentProvider {
   const { config } = opts;
-  const kind = String(
-    config.get<string>('ARTICLE_ENRICHMENT_PROVIDER', 'gemini'),
-  ).toLowerCase();
-  if (kind === 'fake') return new FakeEnrichmentProvider();
+  const kind = readChoice(
+    config,
+    'ARTICLE_ENRICHMENT_PROVIDER',
+    ['gemini', 'openrouter', 'fake'],
+    'gemini',
+  );
+  if (kind === 'fake') {
+    assertFakeAllowed(config, 'ARTICLE_ENRICHMENT_PROVIDER');
+    return new FakeEnrichmentProvider();
+  }
   const logger = new JobLogger({
     job: opts.job,
     level: JobLogger.parseLevel(config.get<string>('LOG_LEVEL')),

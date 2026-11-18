@@ -6,7 +6,7 @@ import { NewsArticle } from '@mera/models/models/news-article.model';
 import { NewsPublisher } from '@mera/models/models/news-publisher.model';
 import { PublicationSource } from '@mera/models/models/publication-source.model';
 import { bootAsyncApp, waitFor, type Harness } from '../../../harness/boot';
-import { server } from '../../../harness/msw';
+import { server, takeUnhandled } from '../../../harness/msw';
 
 interface Item {
   title: string;
@@ -217,5 +217,78 @@ describe('ingest pipeline', () => {
       description: 'Two evening crossings added.',
     });
     expect(article?.embedding_text_source).toBe('english_translation');
+  });
+});
+
+describe('translation provider choice', () => {
+  const saved = { ...process.env };
+  afterEach(() => {
+    for (const key of ['TRANSLATION_PROVIDER', 'ARTICLE_ENRICHMENT_PROVIDER']) {
+      if (saved[key] === undefined) delete process.env[key];
+      else process.env[key] = saved[key];
+    }
+  });
+
+  it('TRANSLATION_PROVIDER=none keeps the article in its own language and calls no service', async () => {
+    process.env.TRANSLATION_PROVIDER = 'none';
+    const h = await bootAsyncApp();
+    try {
+      await h.resetDb();
+      const model = <T>(name: string) =>
+        h.app.get<Model<T>>(getModelToken(name), { strict: false });
+      const publisher = await model<NewsPublisher>(NewsPublisher.name).create({
+        name: 'Example Press',
+        country_code: 'FRA',
+        is_active: true,
+      });
+      await model<PublicationSource>(PublicationSource.name).create({
+        publication_name: 'none.example.test',
+        feed_url: 'https://none.example.test/rss.xml',
+        type: 'rss-feed',
+        country_code: 'FRA',
+        category: 'general',
+        newsPublisherId: publisher._id,
+      });
+      server.use(
+        http.get('https://none.example.test/rss.xml', () =>
+          HttpResponse.text(
+            feedXml('none.example.test', 'fr', [SHORT_FRENCH]),
+            {
+              headers: { 'content-type': 'application/rss+xml' },
+            },
+          ),
+        ),
+      );
+      await h.runJob(QueueName.NEWS_SYNC_FANOUT, {});
+      for (const stage of [
+        QueueName.LOAD_RSS_FEED,
+        QueueName.TRANSLATE_ARTICLE,
+        QueueName.GENERATE_EMBEDDING_ARTICLE,
+        QueueName.DATABASE_PROJECTOR,
+      ]) {
+        await h.drain(stage);
+      }
+      const article = await model<NewsArticle>(NewsArticle.name)
+        .findOne({ article_url: 'https://none.example.test/story-0' })
+        .lean();
+      expect(article?.title_en_internal_only).toBe(SHORT_FRENCH.title);
+      expect(takeUnhandled()).toEqual([]);
+    } finally {
+      await h.close();
+    }
+  });
+
+  it('refuses to boot on an unknown TRANSLATION_PROVIDER, naming the allowed values', async () => {
+    process.env.TRANSLATION_PROVIDER = 'gemni';
+    await expect(bootAsyncApp().then((h) => h.close())).rejects.toThrow(
+      'gemini, routed, none, fake',
+    );
+  });
+
+  it('refuses to boot on an unknown ARTICLE_ENRICHMENT_PROVIDER', async () => {
+    process.env.ARTICLE_ENRICHMENT_PROVIDER = 'gpt';
+    await expect(bootAsyncApp().then((h) => h.close())).rejects.toThrow(
+      'gemini, openrouter, fake',
+    );
   });
 });
