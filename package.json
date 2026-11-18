@@ -10,6 +10,8 @@
     "news-api": "nest start mera-server-news-api",
     "scripts": "nest start mera-scripts --",
     "load-rss": "nest start mera-scripts -- load-rss",
+    "status": "nest start mera-scripts -- status",
+    "topic-scores": "nest start mera-scripts -- topic-scores",
     "build:async": "nest build mera-server-async",
     "build:news-api": "nest build mera-server-news-api",
     "build:scripts": "nest build mera-scripts",

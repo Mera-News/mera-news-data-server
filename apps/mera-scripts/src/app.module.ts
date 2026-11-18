@@ -4,6 +4,8 @@ import { BullModule } from '@nestjs/bullmq';
 import { MeraModelsModule } from '@mera/models';
 import { DEFAULT_JOB_OPTIONS } from '@mera/shared';
 import { LoadRssModule } from './commands/load-rss/load-rss.module';
+import { StatusModule } from './commands/status/status.module';
+import { TopicScoresModule } from './commands/topic-scores/topic-scores.module';
 
 @Module({
   imports: [
@@ -23,6 +25,8 @@ import { LoadRssModule } from './commands/load-rss/load-rss.module';
     }),
     MeraModelsModule,
     LoadRssModule,
+    StatusModule,
+    TopicScoresModule,
   ],
 })
 export class AppModule {}
