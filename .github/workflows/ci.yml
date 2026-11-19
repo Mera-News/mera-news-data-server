@@ -79,4 +79,17 @@ jobs:
       - run: npm ci
       - run: npm run build:async
       - run: npm run build:news-api
+      # Names the egress tests resolve to loopback, which the fetcher must refuse.
+      - name: Map fixture hosts to loopback
+        run: echo "127.0.0.1 private-feed.example.test lan-feed.example.test" | sudo tee -a /etc/hosts
+      # A throwaway certificate for the https fixture server, trusted by Node.
+      - name: Create fixture certificate
+        run: |
+          dir="$RUNNER_TEMP/e2e-tls"
+          mkdir -p "$dir"
+          openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 2 \
+            -keyout "$dir/key.pem" -out "$dir/cert.pem" -subj /CN=127.0.0.1 \
+            -addext "subjectAltName=IP:127.0.0.1"
+          echo "E2E_TLS_DIR=$dir" >> "$GITHUB_ENV"
+          echo "NODE_EXTRA_CA_CERTS=$dir/cert.pem" >> "$GITHUB_ENV"
       - run: npm run test:e2e
