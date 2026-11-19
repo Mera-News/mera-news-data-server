@@ -1976,8 +1976,8 @@ export class ArticlesForTopicsService {
    * many stories may be followed is an app-side gate on the follow ACTION,
    * which is the only place it CAN live, per the paragraph above.
    *
-   * `storyArticlesSentCount` is bumped for observability only — see
-   * ArticleQuotaPort.incrementStoryCount. It gates nothing.
+   * Nothing about the caller is counted or stored on this path: no quota call
+   * at all.
    */
   async getArticlesForStories(
     articleIds: string[],
@@ -1987,8 +1987,8 @@ export class ArticlesForTopicsService {
       return { articles: [], dailyLimitReached: false };
     }
 
+    void userId; // callers still pass it; this path charges and records nothing.
     const articles = await this.hydrateArticles(articleIds);
-    await this.articleQuota.incrementStoryCount(userId, articleIds.length);
 
     return { articles, dailyLimitReached: false };
   }

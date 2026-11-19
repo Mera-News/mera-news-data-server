@@ -14,18 +14,27 @@ class RecordingQuota implements ArticleQuotaPort {
       resetAt: new Date(),
     });
   }
-
-  incrementStoryCount() {
-    return Promise.resolve();
-  }
 }
 
 const HYDRATE = `query($ids: [ID!]!) {
   articlesForTopicsByIds(articleIds: $ids) { articles { _id } dailyLimitReached }
 }`;
 
+const STORIES = `query($ids: [ID!]!) {
+  articlesForStories(articleIds: $ids) { articles { _id } dailyLimitReached }
+}`;
+
 describe('news API key principal', () => {
   const quota = new RecordingQuota();
+  /** Every quota method called, by name. */
+  const calls: string[] = [];
+  const recorded = new Proxy(quota, {
+    get(target, key, receiver) {
+      const value: unknown = Reflect.get(target, key, receiver);
+      if (typeof value === 'function') calls.push(String(key));
+      return value;
+    },
+  });
   let api: NewsApi;
 
   beforeAll(async () => {
@@ -37,12 +46,13 @@ describe('news API key principal', () => {
             verify: async (k?: string) => (k === 'k1' ? 'p-1' : null),
           })
           .overrideProvider(ARTICLE_QUOTA)
-          .useValue(quota),
+          .useValue(recorded),
     });
   });
   afterAll(() => api.close());
   beforeEach(async () => {
     quota.reserved = [];
+    calls.length = 0;
     await api.resetDb();
   });
 
@@ -56,6 +66,19 @@ describe('news API key principal', () => {
     expect(quota.reserved).toEqual([
       { userId: 'p-1', count: 1, now: expect.any(Date) },
     ]);
+  });
+
+  it('makes no quota call at all on the followed-story path', async () => {
+    const source = await seedSource(api.connection);
+    const id = await seedArticle(api.connection, { source });
+
+    const res = await api.gql<{
+      articlesForStories: { articles: { _id: string }[] };
+    }>(STORIES, { ids: [String(id)] }, 'k1');
+
+    expect(res.body.errors).toBeUndefined();
+    expect(res.body.data!.articlesForStories.articles).toHaveLength(1);
+    expect(calls).toEqual([]);
   });
 
   it('refuses a key the verifier does not know, without reserving', async () => {

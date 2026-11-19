@@ -31,8 +31,7 @@
  * THE CONTRACT
  * ─────────────────────────────────────────────────────────────────────────────
  *
- * 1. **Neither method throws.** `incrementStoryCount` is telemetry and must
- *    swallow its own failures; `reserve` reports refusal through
+ * 1. **`reserve` never throws.** It reports refusal through
  *    `limitReached`, never through an exception. A quota backend that is down
  *    must not turn into a 500 on a feed request.
  *
@@ -86,15 +85,4 @@ export interface ArticleQuotaPort {
     now?: Date,
     userCreatedAt?: unknown,
   ): Promise<QuotaReservation>;
-
-  /**
-   * Record articles delivered through the quota-EXEMPT followed-story path.
-   *
-   * TELEMETRY ONLY. It gates nothing, refuses nothing and refunds nothing — it
-   * exists so the exemption is observable. Verifying "followed-story articles
-   * stopped counting" against the metered tally alone is not a real test: a
-   * number that fails to move cannot distinguish "the exemption worked" from
-   * "the sync delivered nothing". A counter that goes UP can.
-   */
-  incrementStoryCount(userId: string, count: number): Promise<void>;
 }

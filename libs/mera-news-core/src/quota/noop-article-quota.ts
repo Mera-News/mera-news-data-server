@@ -59,12 +59,6 @@ export class NoopArticleQuota implements ArticleQuotaPort {
       resetAt: nextUtcMidnight(now ?? new Date()),
     };
   }
-
-  /** No tally exists to increment. Deliberately does nothing, never throws. */
-  async incrementStoryCount(userId: string, count: number): Promise<void> {
-    void userId;
-    void count;
-  }
 }
 
 /**
