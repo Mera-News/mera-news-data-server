@@ -133,7 +133,11 @@ describe('embedding meta document', () => {
     const article = (vector?: number[]) =>
       db
         .collection('news-article')
-        .insertOne(vector ? { embedding_article_data_retrieval: vector } : {});
+        .insertOne(
+          vector === undefined
+            ? {}
+            : { embedding_article_data_retrieval: vector },
+        );
 
     it('refuses vectors of another length and writes no document', async () => {
       await article([0.1, 0.2, 0.3]);
@@ -155,6 +159,25 @@ describe('embedding meta document', () => {
 
     it('ignores articles that have no vector yet', async () => {
       await article();
+
+      await check(FAKE, true);
+
+      expect(await stored()).toMatchObject({ dims: 768 });
+    });
+
+    // The schema defaults the field to [], so every article that is not
+    // embedded yet holds an empty array: a normal state of every database.
+    it('ignores an article whose vector is still the empty default', async () => {
+      await article([]);
+      await article(Array.from({ length: 768 }, () => 0.1));
+
+      await check(FAKE, true);
+
+      expect(await stored()).toMatchObject({ dims: 768 });
+    });
+
+    it('starts when every article still has the empty default', async () => {
+      await article([]);
 
       await check(FAKE, true);
 

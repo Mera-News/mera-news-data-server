@@ -67,8 +67,9 @@ export async function checkEmbeddingMeta(
     if (!write) return;
 
     const sample = await db.collection('news-article').findOne(
-      // An array only: `$size` on a null or missing field would fail the read.
-      { embedding_article_data_retrieval: { $type: 'array' } },
+      // A non-empty array only: the schema defaults the field to [], so every
+      // article not embedded yet holds one, and `$size` fails on null.
+      { 'embedding_article_data_retrieval.0': { $exists: true } },
       {
         projection: {
           length: { $size: '$embedding_article_data_retrieval' },
