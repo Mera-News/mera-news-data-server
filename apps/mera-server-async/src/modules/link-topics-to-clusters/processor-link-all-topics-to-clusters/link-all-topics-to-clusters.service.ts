@@ -8,6 +8,7 @@ import {
   UserTopicDocument,
 } from '@mera/models/models/user-topic.model';
 import {
+  LinkTopicsToClustersStatus,
   StateMachineLinkTopicsToClusters,
   StateMachineLinkTopicsToClustersDocument,
 } from '@mera/models/models/state-machine-link-topics-to-clusters.model';
@@ -56,6 +57,7 @@ export class LinkAllTopicsToClustersService {
     // must never fail (or abort) the topic-linking run, so it is best-effort.
     await this.enqueueHeadlineEditionBuild();
 
+    let runId: Types.ObjectId | undefined;
     try {
       // `_id` projection only: the full document carries the 768-dim
       // `news_topic_embed` vector and nothing downstream reads anything but the
@@ -84,6 +86,7 @@ export class LinkAllTopicsToClustersService {
       if (allTopics.length === 0) {
         const emptyLinkingResult =
           await this.stateMachineLinkTopicsToClustersModel.create({
+            status: LinkTopicsToClustersStatus.ENQUEUE_SUCCESS,
             totalTopicsEnqueuedForProcessing: 0,
             processedTopicIds: [],
           });
@@ -102,6 +105,7 @@ export class LinkAllTopicsToClustersService {
           totalTopicsEnqueuedForProcessing: allTopics.length,
           processedTopicIds: [],
         });
+      runId = linkingResult._id;
 
       const timestamp = Date.now();
 
@@ -119,6 +123,14 @@ export class LinkAllTopicsToClustersService {
         })),
       );
 
+      // `status --check linked` waits for this mark.
+      await this.stateMachineLinkTopicsToClustersModel.updateOne(
+        { _id: runId },
+        {
+          status: LinkTopicsToClustersStatus.ENQUEUE_SUCCESS,
+          successfullyEnqueuedCount: allTopics.length,
+        },
+      );
       this.logger.log(
         `Enqueued ${allTopics.length} link-topic-to-clusters jobs`,
       );
@@ -138,6 +150,14 @@ export class LinkAllTopicsToClustersService {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       this.logger.error(`Job failed: ${errorMessage}`);
+      if (runId) {
+        await this.stateMachineLinkTopicsToClustersModel
+          .updateOne(
+            { _id: runId },
+            { status: LinkTopicsToClustersStatus.ENQUEUE_FAILED, errorMessage },
+          )
+          .catch(() => undefined);
+      }
       throw error;
     }
   }
