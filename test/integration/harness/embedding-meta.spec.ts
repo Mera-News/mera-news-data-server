@@ -130,14 +130,16 @@ describe('embedding meta document', () => {
   });
 
   describe('first write over stored vectors', () => {
+    // Each row gets its own article_url: a booted app earlier on this worker
+    // leaves the unique index on it behind.
+    let n = 0;
     const article = (vector?: number[]) =>
-      db
-        .collection('news-article')
-        .insertOne(
-          vector === undefined
-            ? {}
-            : { embedding_article_data_retrieval: vector },
-        );
+      db.collection('news-article').insertOne({
+        article_url: `https://feeds.example.test/meta-${++n}`,
+        ...(vector === undefined
+          ? {}
+          : { embedding_article_data_retrieval: vector }),
+      });
 
     it('refuses vectors of another length and writes no document', async () => {
       await article([0.1, 0.2, 0.3]);
@@ -185,9 +187,10 @@ describe('embedding meta document', () => {
     });
 
     it('ignores an article whose vector field is null', async () => {
-      await db
-        .collection('news-article')
-        .insertOne({ embedding_article_data_retrieval: null });
+      await db.collection('news-article').insertOne({
+        article_url: 'https://feeds.example.test/meta-null',
+        embedding_article_data_retrieval: null,
+      });
 
       await check(FAKE, true);
 
