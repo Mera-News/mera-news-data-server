@@ -1,4 +1,9 @@
-import { DynamicModule, Module, Provider } from '@nestjs/common';
+import {
+  DynamicModule,
+  Module,
+  type ModuleMetadata,
+  Provider,
+} from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import {
   NewsArticle,
@@ -90,6 +95,8 @@ export class MeraNewsCoreModule {
   static forRoot(options: {
     quota: Provider;
     storyNames: Provider;
+    /** Modules the `quota` or `storyNames` provider needs for its own dependencies. */
+    imports?: ModuleMetadata['imports'];
   }): DynamicModule {
     return {
       module: MeraNewsCoreModule,
@@ -110,6 +117,7 @@ export class MeraNewsCoreModule {
           { name: HeadlineEdition.name, schema: HeadlineEditionSchema },
           { name: NewsPublisher.name, schema: NewsPublisherSchema },
         ]),
+        ...(options.imports ?? []),
       ],
       providers: [
         options.quota,

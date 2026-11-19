@@ -59,6 +59,8 @@ Every request needs an `x-api-key` header that matches `MERA_NEWS_API_KEY`. Unle
 
 `NEWS_API_OPEN=true` serves requests without a key. It is meant for one person's own install. Each address may then make `NEWS_API_OPEN_RATE_LIMIT` requests a minute (default 60).
 
+A refused request still gets HTTP status 200, with the reason in the GraphQL error's `extensions.code`: `UNAUTHENTICATED` for a missing or wrong key, and `TOO_MANY_REQUESTS` over the open-mode limit, with `retryAfterSeconds` and a `Retry-After` header. A host application that embeds the news API module may supply its own key verifier and quota through `NewsApiModule.forRoot`; a refusal its verifier throws as a `GraphQLError` reaches the caller unchanged, also with HTTP status 200.
+
 Search is for key holders only. In open mode `searchNews` always answers with the error code `SEARCH_NOT_OFFERED`, because each new search costs an embeddings call and an open server has no key to limit it by. To offer search, run the API with a key.
 
 ## Topic categories

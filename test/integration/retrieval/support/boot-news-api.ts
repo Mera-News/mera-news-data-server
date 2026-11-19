@@ -1,4 +1,4 @@
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, type DynamicModule } from '@nestjs/common';
 import { getConnectionToken } from '@nestjs/mongoose';
 import { Test, type TestingModuleBuilder } from '@nestjs/testing';
 import type { Connection } from 'mongoose';
@@ -40,6 +40,8 @@ export interface BootNewsApiOptions {
   env?: Record<string, string>;
   /** Provider overrides, e.g. `API_KEY_VERIFIER` or `ARTICLE_QUOTA`. */
   override?: (builder: TestingModuleBuilder) => TestingModuleBuilder;
+  /** The root module to boot instead of `AppModule`, e.g. `NewsApiModule.forRoot({...})`. */
+  root?: DynamicModule;
 }
 
 /**
@@ -62,7 +64,9 @@ export async function bootNewsApi(
   Object.assign(process.env, env);
 
   try {
-    let builder = Test.createTestingModule({ imports: [AppModule] });
+    let builder = Test.createTestingModule({
+      imports: [options.root ?? AppModule],
+    });
     if (options.override) builder = options.override(builder);
     const moduleRef = await builder.compile();
     const app = moduleRef.createNestApplication({ logger: false });
