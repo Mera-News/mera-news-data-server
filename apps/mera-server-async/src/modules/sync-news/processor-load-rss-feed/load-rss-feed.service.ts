@@ -89,6 +89,18 @@ const SHED_QUARANTINE_CYCLES = 12;
  */
 const SHED_QUARANTINE_MINUTES = 60;
 
+/** One entry of a bulk insert error's `writeErrors`, in either shape it arrives in. */
+type BulkWriteErrorEntry = { code?: number; err?: { code?: number } };
+
+/**
+ * True for a duplicate-key write error. The driver's WriteError exposes `code`
+ * only as a getter over `err.code`, and mongoose's insertMany replaces each
+ * entry with a spread copy, which keeps `err` and drops the getter.
+ */
+function isDuplicateKeyWriteError(e: BulkWriteErrorEntry): boolean {
+  return (e.code ?? e.err?.code) === 11000;
+}
+
 /** Provenance and bandwidth metadata for one fetch, as RSSFeedService reports it. */
 type FetchMeta = SourceFetchResult['fetchMeta'];
 
@@ -1249,7 +1261,7 @@ export class LoadRSSFeedService {
         // With ordered: false, insertMany throws but still inserts non-duplicate docs
         const bulkError = error as {
           insertedDocs?: Array<{ _id: Types.ObjectId; article_url: string }>;
-          writeErrors?: Array<{ code?: number }>;
+          writeErrors?: BulkWriteErrorEntry[];
         };
         if (bulkError.insertedDocs) {
           for (const doc of bulkError.insertedDocs) {
@@ -1264,7 +1276,7 @@ export class LoadRSSFeedService {
         // Count duplicate key errors vs other errors
         const writeErrors = bulkError.writeErrors ?? [];
         for (const writeError of writeErrors) {
-          if (writeError.code === 11000) {
+          if (isDuplicateKeyWriteError(writeError)) {
             duplicates++;
           } else {
             errors++;
@@ -1317,9 +1329,11 @@ export class LoadRSSFeedService {
         );
       } catch (error) {
         // Duplicate fingerprints (11000) are expected on retries — ignore.
-        const bulkError = error as { writeErrors?: Array<{ code?: number }> };
+        const bulkError = error as { writeErrors?: BulkWriteErrorEntry[] };
         const writeErrors = bulkError.writeErrors ?? [];
-        const nonDup = writeErrors.filter((e) => e.code !== 11000).length;
+        const nonDup = writeErrors.filter(
+          (e) => !isDuplicateKeyWriteError(e),
+        ).length;
         if (nonDup > 0) {
           this.logger.warn(
             `article-fingerprint insert had ${nonDup} non-duplicate errors for publication ${publicationSourceId}`,
