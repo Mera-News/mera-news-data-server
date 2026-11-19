@@ -12,6 +12,8 @@ import {
   QueueName,
   type ArticleCacheRedisClient,
 } from '@mera/shared';
+import { SEARCH_INDEX_ADMIN } from '@mera/models/search-index/search-index-admin.port';
+import { InMemorySearchIndexAdmin } from './atlas-search-fake';
 import { MeraServerAsyncModule } from '../../apps/mera-server-async/src/async.module';
 import { NewsSyncFanoutProcessor } from '../../apps/mera-server-async/src/modules/sync-news/processor-news-sync-fanout/news-sync-fanout.processor';
 import { LoadRSSFeedProcessor } from '../../apps/mera-server-async/src/modules/sync-news/processor-load-rss-feed/load-rss-feed.processor';
@@ -107,6 +109,8 @@ export interface Harness {
   app: INestApplication;
   queues: Record<QueueName, QueueRecorder>;
   connection: Connection;
+  /** The search index commands the app was booted with. */
+  searchIndexAdmin: InMemorySearchIndexAdmin;
   /** Runs one job through the queue's real processor. */
   runJob(queue: QueueName, data: unknown, opts?: JobsOptions): Promise<unknown>;
   /** Runs every recorded job of `queue` (and any it re-enqueues) until none is left. */
@@ -124,11 +128,14 @@ export interface Harness {
 export async function bootAsyncApp({
   module = MeraServerAsyncModule,
   processors = {},
+  searchIndexAdmin = new InMemorySearchIndexAdmin(),
 }: {
   /** The root Nest module to boot. */
   module?: Type<unknown>;
   /** Processors merged over the built-in map when `runJob` looks up a queue. */
   processors?: typeof PROCESSORS;
+  /** Stands in for the cluster's search index commands, which the in-memory database rejects. */
+  searchIndexAdmin?: InMemorySearchIndexAdmin;
 } = {}): Promise<Harness> {
   const queues = Object.fromEntries(
     Object.values(QueueName).map((name) => [name, new QueueRecorder(name)]),
@@ -138,6 +145,8 @@ export async function bootAsyncApp({
     // No worker may open a Redis connection.
     .overrideProvider(BullRegistrar)
     .useValue({ onModuleInit: () => undefined })
+    .overrideProvider(SEARCH_INDEX_ADMIN)
+    .useValue(searchIndexAdmin)
     .overrideProvider(CACHE_MANAGER)
     .useValue(createCache())
     .overrideProvider(ArticleCacheService)
@@ -185,7 +194,16 @@ export async function bootAsyncApp({
     await app.close();
   };
 
-  return { app, queues, connection, runJob, drain, resetDb, close };
+  return {
+    app,
+    queues,
+    connection,
+    searchIndexAdmin,
+    runJob,
+    drain,
+    resetDb,
+    close,
+  };
 }
 
 /** Polls `check` until it returns a truthy value (for writes the code does not await). */

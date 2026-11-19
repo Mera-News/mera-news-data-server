@@ -3,7 +3,10 @@ import { join, resolve } from 'node:path';
 import { MongoClient, type Db } from 'mongodb';
 import mongoose, { Schema, type Connection, type Types } from 'mongoose';
 import { createClient } from 'redis';
-import indexes from '../../harness/atlas-search-fake.indexes.json';
+import {
+  NEWS_ARTICLE_COLLECTION,
+  retrievalIndexDefinition,
+} from '../../../libs/mera-models/src/search-index/retrieval-index';
 import { installAtlasSearchFake } from '../../harness/atlas-search-fake';
 import {
   hoursAgo,
@@ -27,7 +30,11 @@ const runId = `${Date.now()}`;
 const apiKey = 'e2e-retrieval-key';
 const appPort = 3103;
 const cachePrefix = `e2e-retrieval-${runId}`;
-const [vectorIndex] = indexes;
+const vectorIndex = {
+  collection: NEWS_ARTICLE_COLLECTION,
+  ...retrievalIndexDefinition(768),
+};
+const indexes = [vectorIndex];
 
 function databaseUri(): string {
   const url = new URL(process.env.MONGODB_URI as string);

@@ -23,6 +23,7 @@ import {
   normalizeCacheNamespace,
 } from '@mera/shared';
 import { ModelsNewsModule } from '@mera/models/models/models-news.module';
+import { SearchIndexModule } from '@mera/models/search-index/search-index.module';
 import {
   ARTICLE_QUOTA,
   CanonicalTopicsService,
@@ -241,6 +242,9 @@ export class NewsApiModule {
         // NEWS SCHEMAS ONLY. See the class comment — do not swap this for
         // `MeraModelsModule`.
         ModelsNewsModule,
+        // Reads the index states and applies the boot decision; only the async
+        // worker builds an index.
+        SearchIndexModule.forRoot({ create: false }),
         EmbeddingProviderModule,
         // Place reference data: a model the news schemas do not carry.
         PlaceModule,

@@ -1,4 +1,10 @@
-import { Injectable, Logger, Inject } from '@nestjs/common';
+import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
+import { GraphQLError } from 'graphql';
+import {
+  SEARCH_INDEX_STATE,
+  VECTOR_NOT_READY,
+  type SearchIndexState,
+} from '@mera/shared/health/search-index-state';
 import { ConfigService } from '@nestjs/config';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
@@ -494,6 +500,10 @@ export class ArticlesForTopicsService {
     private readonly configService: ConfigService,
     @Inject(STORY_NAMES_GENERATOR)
     private readonly storyNames: StoryNamesGenerator,
+    // Unbound in a host that does not track index states: cold topics run as before.
+    @Optional()
+    @Inject(SEARCH_INDEX_STATE)
+    private readonly indexes?: SearchIndexState | null,
   ) {
     this.scoresCalibrated = isCalibratedEmbedding(this.configService);
     this.minScore = vectorMinScore(this.configService);
@@ -995,6 +1005,18 @@ export class ArticlesForTopicsService {
       CLASSIFY_CONCURRENCY,
     );
     const t1 = Date.now();
+
+    // A cold topic needs the vector index. Not ready, it would answer [] and
+    // read as "no news", so say so before spending an embedding call.
+    if (this.indexes && classifications.some((c) => c.cold)) {
+      const state = await this.indexes.vector();
+      if (VECTOR_NOT_READY.includes(state)) {
+        throw new GraphQLError(
+          `Topic search is not ready: the vector search index is ${state}.`,
+          { extensions: { code: 'INDEX_NOT_READY', state } },
+        );
+      }
+    }
 
     // Phase 2 — batch-embed cold topics.
     const coldEmbeddings = await this.embedColdTopics(classifications, timings);

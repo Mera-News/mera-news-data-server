@@ -24,6 +24,12 @@ export class NewsServerStatus {
   @Field(() => String, { nullable: true })
   vectorIndexState!: string | null;
 
+  @Field(() => String, {
+    nullable: true,
+    description: 'State of the lexical search index, or null when not tracked.',
+  })
+  textIndexState!: string | null;
+
   @Field(() => String, { nullable: true })
   embeddingModel!: string | null;
 }

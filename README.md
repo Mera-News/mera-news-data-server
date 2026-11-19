@@ -20,7 +20,7 @@ Export the variables in your shell, or put them in a `.env` file. The ingest wor
 
 1. Create a cluster in MongoDB Atlas.
 2. Put its connection string in `MONGODB_URI`.
-3. Create the indexes described in [CREATE_VECTOR_INDEX.md](CREATE_VECTOR_INDEX.md).
+3. The worker creates the two search indexes on `news-article` the first time it starts, if they are missing. If you manage your indexes yourself, or your database user may not create search indexes, set `SEARCH_INDEX_CREATE=false` and create them by hand as [CREATE_VECTOR_INDEX.md](CREATE_VECTOR_INDEX.md) describes. The server never drops or changes an index.
 
 Other MongoDB deployments that support the same indexes can work.
 

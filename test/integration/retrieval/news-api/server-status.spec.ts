@@ -1,4 +1,6 @@
+import { InMemorySearchIndexAdmin } from '../../../harness/atlas-search-fake';
 import { Types } from 'mongoose';
+import { ServerStatusService } from '@mera/news-core';
 import { bootNewsApi, type NewsApi } from '../support/boot-news-api';
 import {
   hoursAgo,
@@ -16,6 +18,7 @@ const STATUS = `{
     lastTopicLinkAt
     headlineEditionsBuilt
     vectorIndexState
+    textIndexState
     embeddingModel
   }
 }`;
@@ -27,6 +30,7 @@ interface Status {
   lastTopicLinkAt: string | null;
   headlineEditionsBuilt: boolean;
   vectorIndexState: string | null;
+  textIndexState: string | null;
   embeddingModel: string | null;
 }
 
@@ -34,7 +38,10 @@ describe('news server status', () => {
   let api: NewsApi;
 
   beforeAll(async () => {
-    api = await bootNewsApi();
+    // A fresh deployment: no search index yet either.
+    api = await bootNewsApi({
+      searchIndexAdmin: new InMemorySearchIndexAdmin(),
+    });
   });
   afterAll(() => api.close());
   beforeEach(() => api.resetDb());
@@ -52,8 +59,17 @@ describe('news server status', () => {
       lastClusteringAt: null,
       lastTopicLinkAt: null,
       headlineEditionsBuilt: false,
-      vectorIndexState: null,
+      vectorIndexState: 'missing',
+      textIndexState: 'missing',
       embeddingModel: null,
+    });
+  });
+
+  it('answers null for both index states when no state is bound', async () => {
+    const unbound = new ServerStatusService(api.connection);
+    expect(await unbound.status()).toMatchObject({
+      vectorIndexState: null,
+      textIndexState: null,
     });
   });
 
@@ -100,6 +116,7 @@ describe('news server status', () => {
       'lastClusteringAt',
       'lastTopicLinkAt',
       'placesSeeded',
+      'textIndexState',
       'vectorIndexState',
     ]);
   });

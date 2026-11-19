@@ -9,6 +9,10 @@ import {
 } from '@nestjs/terminus';
 import { RedisHealthIndicator } from './redis.health';
 import { HEALTH_OPTIONS, HealthModuleOptions } from './health.constants';
+import {
+  SEARCH_INDEX_STATE,
+  type SearchIndexState,
+} from './search-index-state';
 
 /**
  * Liveness and readiness, shared by every app in this repo.
@@ -47,6 +51,9 @@ export class HealthController {
     @Optional()
     @Inject(RedisHealthIndicator)
     private readonly redis?: RedisHealthIndicator,
+    @Optional()
+    @Inject(SEARCH_INDEX_STATE)
+    private readonly indexes?: SearchIndexState,
   ) {}
 
   @Get()
@@ -65,6 +72,18 @@ export class HealthController {
     }
     if (this.redis) {
       checks.push(() => this.redis!.isHealthy('redis'));
+    }
+    if (this.indexes) {
+      // Always up: an index that is missing or still building never takes a
+      // service out of rotation, because most operations never touch vectors.
+      // Search and topic queries say so themselves.
+      checks.push(async () => {
+        const { vectorIndex, textIndex } = await this.indexes!.report();
+        return {
+          vectorIndex: { status: 'up', ...vectorIndex },
+          textIndex: { status: 'up', ...textIndex },
+        };
+      });
     }
 
     return this.health.check(checks);

@@ -284,6 +284,9 @@ type NewsServerStatus {
 
   """True once the places seed has been loaded."""
   placesSeeded: Boolean!
+
+  """State of the lexical search index, or null when not tracked."""
+  textIndexState: String
   vectorIndexState: String
 }
 

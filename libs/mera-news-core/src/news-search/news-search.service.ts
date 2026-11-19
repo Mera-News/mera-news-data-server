@@ -1,5 +1,5 @@
 import { createHmac, randomBytes } from 'crypto';
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
@@ -8,6 +8,14 @@ import { ConfigService } from '@nestjs/config';
 import { GraphQLError } from 'graphql';
 import { readText } from '@mera/shared/config/env-choice';
 import { SERVABLE_URL_SECURITY_FILTER } from '@mera/shared/url/url-security';
+import {
+  SEARCH_INDEX_STATE,
+  TEXT_NOT_READY,
+  VECTOR_NOT_READY,
+  type IndexState,
+  type SearchIndexState,
+} from '@mera/shared/health/search-index-state';
+import { TEXT_INDEX_NAME } from '@mera/models/search-index/retrieval-index';
 import {
   NewsArticle,
   NewsArticleDocument,
@@ -58,7 +66,7 @@ export const DEFAULT_SEARCH_LIMIT = 20;
 const CUTOFF_HOURS = 48;
 
 /** The lexical (lucene) Atlas index. Optional: without it the vector leg answers alone. */
-export const LEXICAL_SEARCH_INDEX = 'news_article_text_index';
+export const LEXICAL_SEARCH_INDEX = TEXT_INDEX_NAME;
 
 /**
  * Default search-local vector floor, overridable with `SEARCH_VECTOR_MIN_SCORE`.
@@ -282,6 +290,10 @@ export class NewsSearchService {
     private readonly embeddingProvider: EmbeddingProvider,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
     private readonly configService: ConfigService,
+    // Unbound in a host that does not track index states: both legs run as before.
+    @Optional()
+    @Inject(SEARCH_INDEX_STATE)
+    private readonly indexes?: SearchIndexState | null,
   ) {
     const configured = Number(
       this.configService.get<string>(
@@ -354,24 +366,53 @@ export class NewsSearchService {
         { extensions: { code: 'QUERY_TOO_LONG' } },
       );
     }
-    // shortcut: the stored embedding model is not compared with the configured one, so a model change serves mismatched vectors until the corpus is re-embedded, add the check when the embedding meta document exists.
 
     const effectiveLimit = NewsSearchService.clampLimit(limit);
     const annLimit = effectiveLimit * ANN_OVERFETCH;
     const cutoffDate = new Date(Date.now() - CUTOFF_HOURS * 60 * 60 * 1000);
 
+    // A leg whose index is not ready is not run: it would answer nothing, and
+    // the semantic leg would spend an embedding call first.
+    const [vectorState, textState] = this.indexes
+      ? await Promise.all([this.indexes.vector(), this.indexes.text()])
+      : [undefined, undefined];
+    const skipSemantic =
+      !!vectorState && VECTOR_NOT_READY.includes(vectorState);
+    const skipLexical = !!textState && TEXT_NOT_READY.includes(textState);
+    if (skipLexical) {
+      this.logger.warn(
+        `searchNews: lexical leg skipped, the text index is ${textState}`,
+      );
+    }
+    if (skipSemantic) {
+      this.logger.warn(
+        `searchNews: semantic leg skipped, the vector index is ${vectorState}`,
+      );
+    }
+    if (skipSemantic && skipLexical) throw indexNotReady(vectorState);
+
     // Concurrent, and each leg is allowed to fail on its own. This is the
     // shape the feed learned the hard way: a provider error hard-failing the
     // whole query turned into a bare 500 with a blank screen behind it.
+    const skipped = Promise.resolve<ArticleRow[]>([]);
     const [lexical, semantic] = await Promise.allSettled([
-      this.runLexicalLeg(normalized, annLimit, cutoffDate),
-      this.runSemanticLeg(normalized, annLimit, cutoffDate),
+      skipLexical
+        ? skipped
+        : this.runLexicalLeg(normalized, annLimit, cutoffDate),
+      skipSemantic
+        ? skipped
+        : this.runSemanticLeg(normalized, annLimit, cutoffDate),
     ]);
 
-    if (lexical.status === 'rejected' && semantic.status === 'rejected') {
+    // A skipped leg did not answer either.
+    const lexicalFailed = skipLexical || lexical.status === 'rejected';
+    const semanticFailed = skipSemantic || semantic.status === 'rejected';
+    if (lexicalFailed && semanticFailed) {
+      // The vector index explains it, and its state says whether to wait.
+      if (skipSemantic) throw indexNotReady(vectorState);
       this.logger.error(
-        `searchNews: both legs failed. lexical=${describeError(lexical.reason)} ` +
-          `semantic=${describeError(semantic.reason)}`,
+        `searchNews: both legs failed. lexical=${skipLexical ? `skipped (${textState})` : describeError((lexical as PromiseRejectedResult).reason)} ` +
+          `semantic=${describeError((semantic as PromiseRejectedResult).reason)}`,
       );
       throw new GraphQLError('Search is unavailable right now.', {
         extensions: { code: 'SEARCH_UNAVAILABLE' },
@@ -686,4 +727,12 @@ export class NewsSearchService {
 
     return new Map(sources.map((p) => [p._id.toString(), p]));
   }
+}
+
+/** No leg can answer: the vector index is not ready, and the state says whether to wait. */
+function indexNotReady(state: IndexState | undefined): GraphQLError {
+  return new GraphQLError(
+    `Search is not ready: the vector search index is ${state}.`,
+    { extensions: { code: 'INDEX_NOT_READY', state } },
+  );
 }

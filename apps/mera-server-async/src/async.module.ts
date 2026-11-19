@@ -38,6 +38,7 @@ import { RSSFeedModule } from './modules/shared-utilities/rss-feed/rss-feed.modu
 // Import other modules
 import { RestEndpointsModule } from './modules/rest-endpoints/rest-endpoints.module';
 import { MeraModelsModule } from '@mera/models';
+import { SearchIndexModule } from '@mera/models/search-index/search-index.module';
 
 /**
  * Creates BullMQ queue configurations.
@@ -73,6 +74,8 @@ const ALL_QUEUES = Object.values(QueueName);
       inject: [ConfigService],
     }),
     MeraModelsModule,
+    // The one process that builds a missing search index at boot.
+    SearchIndexModule.forRoot({ create: true }),
     AxiosModule,
 
     RSSFeedModule,

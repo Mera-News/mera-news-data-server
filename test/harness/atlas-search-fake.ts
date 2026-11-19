@@ -1,5 +1,16 @@
 import mongoose from 'mongoose';
-import indexes from './atlas-search-fake.indexes.json';
+// Relative imports, which resolve under every jest config here.
+import { embeddingDims } from '../../libs/mera-shared/src/embedding-provider/embedding-config';
+import {
+  NEWS_ARTICLE_COLLECTION,
+  retrievalIndexDefinition,
+  textIndexDefinition,
+} from '../../libs/mera-models/src/search-index/retrieval-index';
+import type {
+  ListedSearchIndex,
+  SearchIndexAdmin,
+  SearchIndexSpec,
+} from '../../libs/mera-models/src/search-index/search-index-admin.port';
 
 /**
  * An in-memory stand-in for MongoDB `$vectorSearch`. The in-memory database has
@@ -61,6 +72,16 @@ const SEARCH_META = new Set([
   'searchHighlights',
   'searchSequenceToken',
 ]);
+
+// The one definition the server creates, at the harness's configured size.
+const indexes: IndexDefinition[] = [
+  {
+    collection: NEWS_ARTICLE_COLLECTION,
+    ...retrievalIndexDefinition(
+      embeddingDims({ get: (key) => process.env[key] as never }),
+    ),
+  },
+];
 
 type Exec = typeof mongoose.Aggregate.prototype.exec;
 type Pipeline = Record<string, any>[];
@@ -184,9 +205,7 @@ async function rewrite(
       refuse(`$vectorSearch key "${key}" is not supported`);
   }
 
-  const index = (indexes as IndexDefinition[]).find(
-    (i) => i.name === stage.index,
-  );
+  const index = indexes.find((i) => i.name === stage.index);
   if (!index || index.collection !== collection) {
     refuse(
       `index ${JSON.stringify(stage.index)} is not defined for collection ${collection}`,
@@ -318,4 +337,82 @@ export function installAtlasSearchFake(): {
       installed = undefined;
     },
   };
+}
+
+export const searchIndexError = (message: string, code: number) =>
+  Object.assign(new Error(message), { code });
+
+/**
+ * An in-memory stand-in for the search index commands. The in-memory database
+ * rejects `$listSearchIndexes`, so the harness binds this instead. A created
+ * index is `READY` unless `createdStatus` says otherwise; the `*Error` fields
+ * plant the failures a real cluster answers with.
+ */
+export class InMemorySearchIndexAdmin implements SearchIndexAdmin {
+  readonly indexes = new Map<string, ListedSearchIndex>();
+  readonly collections = new Set<string>();
+  /** Every create call, in order, whether it succeeded or not. */
+  readonly createCalls: string[] = [];
+  createdStatus = { status: 'READY', queryable: true };
+  listError?: Error;
+  createError?: Error;
+  /** Stores the index, then answers "already exists", as the loser of a race does. */
+  createLosesRace = false;
+
+  list(): Promise<ListedSearchIndex[]> {
+    if (this.listError) return Promise.reject(this.listError);
+    return Promise.resolve([...this.indexes.values()]);
+  }
+
+  createCollection(name: string): Promise<void> {
+    if (this.collections.has(name)) {
+      return Promise.reject(searchIndexError('Collection already exists', 48));
+    }
+    this.collections.add(name);
+    return Promise.resolve();
+  }
+
+  create(spec: SearchIndexSpec): Promise<void> {
+    this.createCalls.push(spec.name);
+    if (this.createError) return Promise.reject(this.createError);
+    const exists = this.indexes.has(spec.name);
+    if (!exists) {
+      this.indexes.set(spec.name, {
+        name: spec.name,
+        type: spec.type,
+        latestDefinition: spec.definition,
+        ...this.createdStatus,
+      });
+    }
+    return exists || this.createLosesRace
+      ? Promise.reject(searchIndexError('Index already exists', 68))
+      : Promise.resolve();
+  }
+
+  /** Both indexes this server queries, built and queryable: a healthy deployment. */
+  static withReadyIndexes(dims = 768): InMemorySearchIndexAdmin {
+    const admin = new InMemorySearchIndexAdmin();
+    for (const spec of [
+      retrievalIndexDefinition(dims),
+      textIndexDefinition(),
+    ]) {
+      admin.plant({
+        name: spec.name,
+        type: spec.type,
+        latestDefinition: spec.definition,
+        status: 'READY',
+        queryable: true,
+      });
+    }
+    return admin;
+  }
+
+  /** Puts an index in the answer as Atlas would report it. */
+  plant(index: ListedSearchIndex) {
+    this.indexes.set(index.name, index);
+  }
+
+  setStatus(name: string, status: string, queryable: boolean) {
+    this.indexes.set(name, { ...this.indexes.get(name)!, status, queryable });
+  }
 }

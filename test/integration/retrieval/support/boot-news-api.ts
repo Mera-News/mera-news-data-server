@@ -3,6 +3,8 @@ import { getConnectionToken } from '@nestjs/mongoose';
 import { Test, type TestingModuleBuilder } from '@nestjs/testing';
 import type { Connection } from 'mongoose';
 import request from 'supertest';
+import { SEARCH_INDEX_ADMIN } from '@mera/models/search-index/search-index-admin.port';
+import { InMemorySearchIndexAdmin } from '../../../harness/atlas-search-fake';
 import { AppModule } from '../../../../apps/mera-server-news-api/src/app.module';
 
 /** The key the booted news API accepts unless a test overrides it. */
@@ -19,6 +21,8 @@ export interface GqlResponse<T> {
 export interface NewsApi {
   app: INestApplication;
   connection: Connection;
+  /** The search index commands the app was booted with. */
+  searchIndexAdmin: InMemorySearchIndexAdmin;
   /** A supertest agent on the app, for non-GraphQL routes such as /health. */
   http(): ReturnType<typeof request>;
   /** POSTs one GraphQL operation with `x-api-key` (omitted when `apiKey` is null). */
@@ -42,6 +46,8 @@ export interface BootNewsApiOptions {
   override?: (builder: TestingModuleBuilder) => TestingModuleBuilder;
   /** The root module to boot instead of `AppModule`, e.g. `NewsApiModule.forRoot({...})`. */
   root?: DynamicModule;
+  /** Stands in for the cluster's search index commands. Default: both indexes built and ready. */
+  searchIndexAdmin?: InMemorySearchIndexAdmin;
 }
 
 /**
@@ -62,11 +68,15 @@ export async function bootNewsApi(
     Object.keys(env).map((key) => [key, process.env[key]]),
   );
   Object.assign(process.env, env);
+  const searchIndexAdmin =
+    options.searchIndexAdmin ?? InMemorySearchIndexAdmin.withReadyIndexes();
 
   try {
     let builder = Test.createTestingModule({
       imports: [options.root ?? AppModule],
-    });
+    })
+      .overrideProvider(SEARCH_INDEX_ADMIN)
+      .useValue(searchIndexAdmin);
     if (options.override) builder = options.override(builder);
     const moduleRef = await builder.compile();
     const app = moduleRef.createNestApplication({ logger: false });
@@ -97,7 +107,7 @@ export async function bootNewsApi(
       restore(saved);
     };
 
-    return { app, connection, http, gql, resetDb, close };
+    return { app, connection, searchIndexAdmin, http, gql, resetDb, close };
   } catch (error) {
     restore(saved);
     throw error;

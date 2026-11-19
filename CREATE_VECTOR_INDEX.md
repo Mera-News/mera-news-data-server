@@ -2,14 +2,31 @@
 
 All indexes below require MongoDB Atlas with vector search support.
 
+## Who creates them
+
+The async worker creates the two `news-article` indexes (the vector index and
+the text index below) at boot when they are missing. Set
+`SEARCH_INDEX_CREATE=false` to stop that: the server then never creates an
+index, only reads their states, and a missing index is yours to create by hand
+with the commands below. Use that setting when your deployment manages its own
+indexes, or when the database user may not create search indexes. The news API
+never creates an index.
+
+`/health/ready` and the `newsServerStatus` answer report each index as one of
+`missing`, `building`, `failed`, `ready`, `outdated` (the vector index lacks a
+field this release queries), `dims_mismatch` (the vector index holds another
+size than `EMBEDDING_DIMS`) or `unreadable`. None of them takes a service out of
+rotation. The server never drops, updates or rebuilds an index: `failed`,
+`outdated` and `dims_mismatch` need you to drop the index and create it again.
+A `dims_mismatch` found at boot stops the process.
+
+`libs/mera-models/src/search-index/retrieval-index.ts` holds the definitions
+the worker creates and the tests build from, with the vector size taken from
+`EMBEDDING_DIMS`. The commands below are the same definitions at 768 dimensions.
+
 ## Required Indexes
 
 Run these in `mongosh` connected to your Atlas cluster.
-
-`test/harness/atlas-search-fake.indexes.json` holds the retrieval index the
-server reads. The in-memory vector-search fake validates queries against it and
-the CI e2e job creates its indexes from it, so change the definition there and
-here together.
 
 ```javascript
 // Vector index: article retrieval embedding (asymmetric search)

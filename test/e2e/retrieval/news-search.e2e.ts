@@ -2,7 +2,10 @@ import { ChildProcess, spawn } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import { MongoClient, type Db } from 'mongodb';
 import mongoose, { type Connection, type Types } from 'mongoose';
-import indexes from '../../harness/atlas-search-fake.indexes.json';
+import {
+  NEWS_ARTICLE_COLLECTION,
+  retrievalIndexDefinition,
+} from '../../../libs/mera-models/src/search-index/retrieval-index';
 import {
   seedArticle,
   seedSource,
@@ -19,7 +22,10 @@ const repo = resolve(__dirname, '../../..');
 const runId = `${Date.now()}`;
 const apiKey = 'e2e-search-key';
 const appPort = 3104;
-const [vectorIndex] = indexes;
+const vectorIndex = {
+  collection: NEWS_ARTICLE_COLLECTION,
+  ...retrievalIndexDefinition(768),
+};
 
 function databaseUri(): string {
   const url = new URL(process.env.MONGODB_URI as string);
