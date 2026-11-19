@@ -14,6 +14,8 @@ module.exports = {
   },
   testEnvironment: 'node',
   testMatch: ['**/*.e2e.ts'],
+  // The self-hosting spec needs the services the guide starts, which only its own CI job has.
+  testPathIgnorePatterns: process.env.SELFHOST_E2E ? [] : ['/selfhost/'],
   maxWorkers: 1,
   testTimeout: 240000,
 };

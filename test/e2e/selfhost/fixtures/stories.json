@@ -1,0 +1,127 @@
+{
+  "feeds": [
+    {
+      "slug": "harbour-gazette",
+      "publication_name": "Harbour Gazette",
+      "country": "GBR",
+      "language": "en"
+    },
+    {
+      "slug": "northern-ledger",
+      "publication_name": "Northern Ledger",
+      "country": "GBR",
+      "language": "en"
+    },
+    {
+      "slug": "le-courrier-du-port",
+      "publication_name": "Le Courrier du Port",
+      "country": "FRA",
+      "language": "fr"
+    },
+    {
+      "slug": "el-diario-del-valle",
+      "publication_name": "El Diario del Valle",
+      "country": "ESP",
+      "language": "es"
+    },
+    {
+      "slug": "daily-lantern",
+      "publication_name": "Daily Lantern",
+      "country": "GBR",
+      "language": "en"
+    }
+  ],
+  "stories": [
+    {
+      "id": "buses",
+      "keywords": ["electric buses", "brightwater"]
+    },
+    {
+      "id": "bridge",
+      "keywords": ["halvorsen"]
+    },
+    {
+      "id": "launch",
+      "keywords": ["kestrel orbital"]
+    }
+  ],
+  "items": [
+    {
+      "feed": "harbour-gazette",
+      "story": "buses",
+      "slug": "brightwater-electric-buses",
+      "title": "Brightwater orders 40 electric buses for its city routes",
+      "description": "Brightwater council has signed a contract for 40 electric buses, which will replace the diesel fleet on every city route by next spring."
+    },
+    {
+      "feed": "northern-ledger",
+      "story": "buses",
+      "slug": "brightwater-bus-contract",
+      "title": "Electric buses coming to Brightwater after council vote",
+      "description": "Councillors in Brightwater voted to buy electric buses and to build two charging depots, with the first vehicles due in the spring."
+    },
+    {
+      "feed": "le-courrier-du-port",
+      "story": "buses",
+      "slug": "brightwater-bus-electriques",
+      "title": "Brightwater commande quarante bus électriques pour ses lignes urbaines",
+      "description": "La municipalité de Brightwater a signé un contrat pour quarante bus électriques qui remplaceront la flotte diesel sur toutes les lignes de la ville dès le printemps."
+    },
+    {
+      "feed": "northern-ledger",
+      "story": "bridge",
+      "slug": "halvorsen-bridge-reopens",
+      "title": "Halvorsen Bridge reopens after two years of repairs",
+      "description": "The Halvorsen Bridge carried its first lorries this morning, two years after engineers closed it to traffic over cracks in the main span."
+    },
+    {
+      "feed": "el-diario-del-valle",
+      "story": "bridge",
+      "slug": "puente-halvorsen-reabre",
+      "title": "El puente Halvorsen reabre tras dos años de reparaciones",
+      "description": "El puente Halvorsen volvió a recibir camiones esta mañana, dos años después de que los ingenieros lo cerraran al tráfico por grietas en el tramo principal."
+    },
+    {
+      "feed": "daily-lantern",
+      "story": "bridge",
+      "slug": "halvorsen-reopening",
+      "title": "Halvorsen Bridge open again",
+      "description": "Traffic crosses the Halvorsen Bridge again today after repairs that took two years, and local engineers say the span is now sound and safe."
+    },
+    {
+      "feed": "harbour-gazette",
+      "story": "launch",
+      "slug": "kestrel-orbital-launch",
+      "title": "Kestrel Orbital launches its first rocket from the north coast",
+      "description": "Kestrel Orbital put its first rocket into the air from the north coast on Tuesday, and the company says the test reached its planned height."
+    },
+    {
+      "feed": "le-courrier-du-port",
+      "story": "launch",
+      "slug": "kestrel-orbital-lancement",
+      "title": "Kestrel Orbital lance sa première fusée depuis la côte nord",
+      "description": "Kestrel Orbital a lancé mardi sa première fusée depuis la côte nord, et l'entreprise affirme que l'essai a atteint l'altitude prévue."
+    },
+    {
+      "feed": "daily-lantern",
+      "story": "launch",
+      "slug": "kestrel-orbital-test-flight",
+      "title": "Kestrel Orbital test flight goes to plan",
+      "description": "Kestrel Orbital says its first test flight reached the planned height on Tuesday after a short delay for weather, and the crew checks the data."
+    },
+    {
+      "feed": "northern-ledger",
+      "story": null,
+      "slug": "tidewick-lighthouse",
+      "title": "Tidewick Lighthouse reopens to visitors after a long restoration",
+      "description": "Visitors can climb the Tidewick Lighthouse again from Saturday, after volunteers spent three years restoring the lamp room and the stairs."
+    },
+    {
+      "feed": "el-diario-del-valle",
+      "story": null,
+      "slug": "festival-marmolar",
+      "title": "El Festival de Marmolar abre su programa de otoño con música en la plaza",
+      "description": "El pueblo de Marmolar celebra desde hoy su festival de otoño, con conciertos en la plaza mayor, mercado de artesanía y cenas populares hasta el domingo."
+    }
+  ]
+}

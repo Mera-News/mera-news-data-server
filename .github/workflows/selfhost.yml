@@ -1,0 +1,98 @@
+name: Self-hosting guide
+
+# Follows docs/self-host.md in a fresh environment. It runs only when the guide,
+# its settings example, the runner or this file change, or by hand: it takes a
+# few minutes and builds two search indexes. Pushes only, so no pull request
+# from a fork ever reaches the clustering deploy key.
+on:
+  push:
+    paths:
+      - docs/self-host.md
+      - .env.example
+      - test/e2e/selfhost/**
+      - .github/workflows/selfhost.yml
+  workflow_dispatch:
+
+jobs:
+  # Follows docs/self-host.md step by step, then checks what it built.
+  selfhost:
+    # The clustering deploy key is a repository secret, which Dependabot's runs do not get.
+    if: github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      mongo:
+        image: mongodb/mongodb-atlas-local:8@sha256:034530eef78a0631c35f07e1a7244429d5c7b8cb96aefb52155b8a76047816cc
+        env:
+          DO_NOT_TRACK: "1"
+        ports:
+          - 27017:27017
+      redis:
+        image: redis:7.2-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      MONGODB_URI: mongodb://127.0.0.1:27017/mera-news?directConnection=true
+      SELFHOST_LOG_DIR: /tmp/selfhost-logs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Check the runner and the guide
+        run: |
+          node --test test/e2e/selfhost/*.test.mjs
+          node test/e2e/selfhost/run-docs.mjs docs/self-host.md --lint
+      # The clustering repository is private for now; the key reaches only git, through these variables.
+      - name: Clustering access
+        env:
+          CLUSTERING_DEPLOY_KEY: ${{ secrets.CLUSTERING_DEPLOY_KEY }}
+        run: |
+          umask 077
+          printf '%s\n' "$CLUSTERING_DEPLOY_KEY" > "$RUNNER_TEMP/clustering_key"
+          # GitHub's published ed25519 host key (api.github.com/meta), SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU.
+          echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > "$RUNNER_TEMP/known_hosts"
+          {
+            echo "GIT_SSH_COMMAND=ssh -i $RUNNER_TEMP/clustering_key -o IdentitiesOnly=yes -o UserKnownHostsFile=$RUNNER_TEMP/known_hosts"
+            echo "GIT_CONFIG_COUNT=1"
+            echo "GIT_CONFIG_KEY_0=url.git@github.com:Mera-News/mera-news-clustering.git.insteadOf"
+            echo "GIT_CONFIG_VALUE_0=https://github.com/Mera-News/mera-news-clustering.git"
+          } >> "$GITHUB_ENV"
+      - name: Start the stand-ins
+        run: |
+          mkdir -p "$SELFHOST_LOG_DIR"
+          nohup node test/e2e/selfhost/fake-embeddings.mjs > "$SELFHOST_LOG_DIR/fake-embeddings.log" 2>&1 &
+          echo $! >> "$SELFHOST_LOG_DIR/stand-ins.pids"
+          nohup node test/e2e/selfhost/fixture-publisher.mjs > "$SELFHOST_LOG_DIR/fixture-publisher.log" 2>&1 &
+          echo $! >> "$SELFHOST_LOG_DIR/stand-ins.pids"
+          curl --retry 20 --retry-connrefused --retry-delay 1 -fsS http://127.0.0.1:8765/__hits
+          curl --retry 20 --retry-connrefused --retry-delay 1 -fsS http://127.0.0.1:11434/v1/embeddings -H "content-type: application/json" -d '{"model": "nomic-embed-text", "input": "ping"}' -o /dev/null
+      - name: Follow the guide
+        run: node test/e2e/selfhost/run-docs.mjs docs/self-host.md
+      - name: Check what it built
+        env:
+          SELFHOST_E2E: "true"
+        run: npm run test:e2e -- --testPathPatterns selfhost
+      - name: Show the logs and stop the services
+        if: always()
+        run: |
+          for f in "$SELFHOST_LOG_DIR"/*.log; do
+            echo "::group::$f"
+            cat "$f"
+            echo "::endgroup::"
+          done
+          for p in $(cat "$SELFHOST_LOG_DIR"/*.pids 2>/dev/null); do
+            kill -- "-$p" 2>/dev/null || kill "$p" 2>/dev/null || true
+          done
+      - name: Remove the clustering key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/clustering_key"
