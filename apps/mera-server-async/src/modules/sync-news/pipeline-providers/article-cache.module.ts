@@ -9,10 +9,10 @@ const ARTICLE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
  * Composition root for the ID-array pipeline's Redis scratchpad
  * ({@link ArticleCacheService}).
  *
- * Connects to the SAME shared `news-persistent-redis` instance the fingerprint
- * cache uses (env `PERSISTENT_REDIS_URL`, fallback `REDIS_URL`) and namespaces
- * keys by `CACHE_KEY_PREFIX` (staging `stg:`) exactly like `redis-config.ts`, so
- * staging and prod stay isolated on the shared instance. No new infra instance
+ * Connects to the SAME Redis the fingerprint cache uses (env
+ * `PERSISTENT_REDIS_URL`, fallback `REDIS_URL`) and namespaces keys by
+ * `CACHE_KEY_PREFIX` exactly like `redis-config.ts`, so deployments with
+ * different prefixes stay isolated on a shared instance. No separate instance
  * and no `CACHE_REDIS_URL`.
  */
 @Global()

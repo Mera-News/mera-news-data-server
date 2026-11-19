@@ -140,8 +140,8 @@ const DEFAULT_EMBED_TIMEOUT_MS = 2500;
  *      un-projected pipeline hands back `embedding_article_data_retrieval`
  *      (768 floats), `embedding_article_data_text_matching` and
  *      `vector_sidecar_packed` on every row. `avgObjSize` on this collection is
- *      ~21.9 KB, so two un-projected legs is ~3.6 MB per request on the 1 GiB
- *      Cloud Run heap that these vectors have already OOMed once.
+ *      ~21.9 KB, so two un-projected legs is ~3.6 MB per request, on a 1 GiB
+ *      heap that these vectors have already run out of once.
  *   2. The descriptions ride along for the result-shape mapping; the narrow
  *      public shape is still produced in JS at the end, which is what keeps
  *      `description_en` out of the GraphQL type.

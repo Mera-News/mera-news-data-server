@@ -42,7 +42,7 @@ const MAX_BODY_BYTES = 20 * 1024 * 1024;
 
 /**
  * Per-attempt axios timeout. A knob rather than a literal so it can be cut
- * from Terraform during an incident, but the default is deliberately unchanged:
+ * from the deployment's settings during an incident, but the default is deliberately unchanged:
  * lowering it blind would start failing slow-but-healthy feeds, which is the
  * exact failure mode the feed-health work exists to eliminate. Cut it only
  * against a measured `fetchMs` p99.
@@ -63,8 +63,8 @@ const DEFAULT_PROXY_FETCH_TIMEOUT_MS = 30000;
  * slow-failing feed, which is the opposite of what this budget is for.
  *
  * 15s keeps the worst case at 105s with 15s left for decode/parse/insert.
- * Dropping PROXY_FETCH_RETRIES to 1 (planned, from Terraform) widens that to
- * 45s; this constant is what makes the budget safe until then.
+ * Dropping PROXY_FETCH_RETRIES to 1 widens that to 45s; this constant is what
+ * keeps the budget safe at the default.
  */
 const DEFAULT_DIRECT_FALLBACK_TIMEOUT_MS = 15000;
 
@@ -351,7 +351,7 @@ export class AxiosService {
    * unparseable or below `min`.
    *
    * The clamp is not defensive padding: these are the knobs meant to be changed
-   * from Terraform mid-incident, and `configService.get<number>` hands back the
+   * from the deployment's settings mid-incident, and `configService.get<number>` hands back the
    * raw string for a garbage value. A typo must degrade to the default, never
    * take the service down on the one lever being reached for.
    */
@@ -658,8 +658,8 @@ export class AxiosService {
     // a request and is rethrown untouched.
     //
     // That direct works at all is not an assumption: `gated` feeds — government
-    // WAFs that 403 datacenter proxy ranges but answer Cloud Run's egress — are
-    // fetched this way today, 476 of 504 of them successfully.
+    // WAFs that 403 datacenter proxy ranges but answer a direct request — are
+    // fetched this way, 476 of 504 of them successfully when measured.
     //
     // LATENT COUPLING, read this before touching PROXY_INFRA_STATUSES or
     // EGRESS_FAULT_STATUSES. `allowDirectFallback` bounds ONE specific gap and

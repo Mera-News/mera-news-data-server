@@ -372,7 +372,7 @@ export class NewsSyncFanoutService {
    * Branch 2 excludes `aggregation_successful` so it rides the compound
    * {processingStatus, createdAt} index. With only `$ne: <failed>` the bounds
    * covered the ~99% of the corpus the ML job has already stamped, so every
-   * run fetched every article (~283k docs, 3-5 min on the prod primary) to
+   * run fetched every article (~283k docs, 3-5 min on a large deployment) to
    * return nothing. The ML job stamps only articles it clustered, which all
    * have text and vectors, so no re-drivable article is excluded. The one
    * behaviour this narrows: a backfill that unsets text or vectors on a
@@ -486,7 +486,7 @@ export class NewsSyncFanoutService {
    * of one round trip per feed.
    *
    * The previous shape was a `Promise.all` of ~4.8k individual `queue.add()`
-   * calls, measured at ~7 MINUTES of wall clock in prod (2026-08-11). That
+   * calls, measured at ~7 MINUTES of wall clock on a large catalogue. That
    * delay lands entirely before any feed is fetched, so it came straight out of
    * the hour the catalogue had to drain in.
    *

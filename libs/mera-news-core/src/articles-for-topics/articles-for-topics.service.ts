@@ -120,7 +120,7 @@ const RELATED_EMPTY_CACHE_TTL_MS = 60 * 1000;
 /**
  * A topic-resolution slower than this is logged in full at WARN.
  *
- * WARN, not INFO, on purpose: prod runs LOG_LEVEL=error/warn, so an INFO
+ * WARN, not INFO, on purpose: production often runs LOG_LEVEL=warn, so an INFO
  * diagnostic is written and then dropped — which is exactly why the client-side
  * 30s aborts on this query could not be sized from the server side. Logging only
  * the TAIL keeps the volume near zero while capturing every request that is
@@ -181,7 +181,7 @@ const DEFAULT_JINA_QUERY_BATCH = 64;
 // Infra sets JINA_QUERY_TIMEOUT_MS on news-graphql; this default matches it so
 // an unset var behaves identically.
 const DEFAULT_JINA_QUERY_TIMEOUT_MS = 8_000;
-// Exclude BOTH text-matching variants: prod v1 writes the unsuffixed field;
+// Exclude BOTH text-matching variants: the pipeline writes the unsuffixed field;
 // `_internal_only` covers stray v3-drift docs. Multi-KB vectors must never
 // hydrate on read paths (1 Gi heap).
 const EXCLUDE_EMBEDDINGS =
@@ -941,9 +941,9 @@ export class ArticlesForTopicsService {
    * Emit one structured line per SLOW topic-resolution.
    *
    * Deliberately WARN and deliberately threshold-gated. The app aborts this
-   * query at 30s (REQUEST_ABORT_MS) and Cloud Run lets the server keep working
-   * to 300s, so the failure the user sees leaves no trace at all today: the
-   * existing cold-path diagnostic is INFO, and prod runs LOG_LEVEL=error.
+   * query at 30s (REQUEST_ABORT_MS) and a platform may let the server keep
+   * working much longer, so the failure the user sees leaves no trace: the
+   * cold-path diagnostic is INFO, and production often runs above INFO.
    * Logging the tail only means normal traffic stays silent while every request
    * near the abort ceiling is fully explained by a single line.
    *

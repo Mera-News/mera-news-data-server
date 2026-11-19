@@ -187,7 +187,7 @@ describe('must-match', () => {
   });
 
   describe('groundNamesInText', () => {
-    // Real generator outputs measured on prod.
+    // Real generator outputs measured on a live catalogue.
     it('drops names the topic text never says', () => {
       expect(
         groundNamesInText(

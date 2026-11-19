@@ -20,8 +20,8 @@ import {
  * NEVER THROTTLED, and this is a correctness requirement rather than a saving.
  * An app-wide `APP_GUARD` throttler fires on these plain REST routes too, and a
  * platform probe is anonymous, so it carries no `req.user` and falls to the
- * tracker's IP branch. Cloud Run terminates TLS in front of express and sets no
- * `trust proxy`, so that IP is the front end's for effectively all traffic:
+ * tracker's IP branch. Behind a platform that terminates TLS in front of
+ * express, with no `trust proxy`, that IP is the front end's for effectively all traffic:
  * every probe from every instance collapses onto ONE bucket. Backed by shared
  * Redis storage that is a single fleet-wide budget for health checks, so a
  * busy enough service starts 429ing its own probes, failing them, and taking

@@ -28,7 +28,7 @@
  * The persisted lifecycle field names (`tags_status`, `tags_attempts`,
  * `tags_enqueued_at`, `tagsError`) and their string values are DELIBERATELY
  * unchanged by the pre-process rename — they are stage-internal, read by no
- * client, and renaming them would be a prod migration for zero behavioural gain.
+ * client, and renaming them would be a data migration for zero behavioural gain.
  * `tags_enqueued_at` holds the time of the latest ENQUEUED or IN_PROGRESS
  * transition.
  */

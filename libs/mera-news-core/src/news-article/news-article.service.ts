@@ -231,7 +231,7 @@ export class NewsArticleService {
       { $limit: first + 1 },
       // Re-attach the `publicationSource` virtual (mirrors `articleById`) and
       // drop the heavy join arrays + select:false embedding vectors that
-      // aggregation would otherwise hydrate (Cloud Run 1 Gi heap).
+      // aggregation would otherwise hydrate (a 1 GiB heap is enough otherwise).
       {
         $lookup: {
           from: 'publication-source',

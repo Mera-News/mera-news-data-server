@@ -38,7 +38,7 @@ export const NEAR_DUP_WINDOW_S: number = chosen.windowS;
 export const NEAR_DUP_EXCLUSION: 'publisher' | 'source' =
   chosen.exclusion === 'source' ? 'source' : 'publisher';
 
-/** Ring slots: the 48h prod peak (~550k) plus ~45%. A wrap only under-merges. */
+/** Ring slots: a large catalogue's 48h peak (~550k) plus ~45%. A wrap only under-merges. */
 export const RING_CAPACITY = 800_000;
 
 /** How long an article stays joinable (the article retention window). */

@@ -37,7 +37,7 @@ export const QUEUE_TIMEOUTS: Record<string, number> = {
   'link-all-topics-to-clusters': 60 * 1000, // 1 minute - enqueues workers
 
   // Headline editions (precomputed top-headlines materialization)
-  'build-headline-editions': 10 * 60 * 1000, // 10 minutes - full 48h pool rebuild, ~5.5 min in prod
+  'build-headline-editions': 10 * 60 * 1000, // 10 minutes - full 48h pool rebuild, ~5.5 min on a large catalogue
 
   // Utility
   'data-retention-sweep': 15 * 60 * 1000, // 15 minutes - bulk deleteMany per retention rule + cascade
@@ -56,7 +56,7 @@ export const DEFAULT_LOCK_DURATION = 60000; // 1 minute
  * to jobs created via `FlowProducer.add()`. Without explicit `removeOnComplete`/
  * `removeOnFail`, the parent's `<jobKey>:processed` hash (which holds every
  * child's return value) lives forever in Redis. With large fan-outs that single
- * hash can exceed 17 MB and OOM Memorystore.
+ * hash can exceed 17 MB and run a small Redis out of memory.
  *
  * Apply this to every FlowProducer.add() child's `opts` (the sole remaining
  * flow is `link-all-topics-to-clusters`; the rss-processing-flow parent was

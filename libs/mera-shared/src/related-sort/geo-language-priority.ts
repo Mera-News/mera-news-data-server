@@ -152,8 +152,8 @@ function rankedCountries(ctx: UserGeoLanguageContext): string[] {
  * both fire the named one wins the representative slot.
  *
  * This is DELIBERATELY not a score term. `W_PUB` is 0.076 — a boost there
- * contributes ≈ +0.040 against a topic match's +0.365, and it is inert in prod
- * anyway because every article takes the legacy LLM path and the math score is
+ * contributes ≈ +0.040 against a topic match's +0.365, and it is inert on a
+ * deployment where every article takes the legacy LLM path and the math score is
  * discarded. "Prefer" therefore means: choose the representative, and top the
  * related list (D1). Ordering by importance is untouched.
  *

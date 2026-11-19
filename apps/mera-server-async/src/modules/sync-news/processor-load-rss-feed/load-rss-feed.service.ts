@@ -1480,7 +1480,7 @@ export class LoadRSSFeedService {
         },
       );
       this.logger.log(
-        `http-links: ${publicationSource.publication_name} (${rssFeedId}) — ${decision.reason}`,
+        `http-links: ${publicationSource.publication_name} (${rssFeedId}): ${decision.reason}`,
       );
       return;
     }
@@ -1503,7 +1503,7 @@ export class LoadRSSFeedService {
       { $set: update },
     );
 
-    const message = `http-links: ${publicationSource.publication_name} (${rssFeedId}) — ${decision.reason}`;
+    const message = `http-links: ${publicationSource.publication_name} (${rssFeedId}): ${decision.reason}`;
     if (decision.action === 'deactivate') {
       this.logger.warn(`${message}; feed deactivated permanently`);
     } else {

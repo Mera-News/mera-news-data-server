@@ -360,8 +360,8 @@ export class RSSFeedService {
       // `new Date(NaN)` is an Invalid Date that Mongoose then rejects with
       // `Cast to date failed for value "Invalid Date"`. That failed the WHOLE
       // job even though the fetch and the parse had both succeeded — one bad
-      // item discarded every good one (75 occurrences in 3h of prod logs,
-      // 2026-08-11, e.g. اليوم السابع).
+      // item discarded every good one (75 occurrences in 3h on a large
+      // catalogue, e.g. اليوم السابع).
       let last_publish_date: Date | undefined;
       if (feed.items.length > 0) {
         const dates = (feed.items as RssFeedItem[])

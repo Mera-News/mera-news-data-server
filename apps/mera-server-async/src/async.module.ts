@@ -66,7 +66,7 @@ const ALL_QUEUES = Object.values(QueueName);
     }),
     // Data cache (RSS-dedup fingerprints, pub-source-info). Reads
     // PERSISTENT_REDIS_URL (falling back to REDIS_URL) and honors
-    // CACHE_KEY_PREFIX so staging can share prod's persistent Redis instance
+    // CACHE_KEY_PREFIX, so two deployments can share one Redis instance
     // without key collisions. See ./redis-config.ts.
     CacheModule.registerAsync({
       isGlobal: true,
@@ -104,8 +104,8 @@ const ALL_QUEUES = Object.values(QueueName);
 
     // BullMQ queues/flows. The `prefix` (BULLMQ_PREFIX, default `bull`)
     // propagates to every registerQueue()/registerFlowProducer() below and to
-    // the workers/QueueEvents the explorer creates, so staging (bull-stg) reads
-    // its own queues on a shared instance. See ./redis-config.ts.
+    // the workers/QueueEvents the explorer creates, so a deployment with its own
+    // prefix reads only its own queues on a shared instance. See ./redis-config.ts.
     BullModule.forRootAsync({
       useFactory: (configService: ConfigService) =>
         buildBullRootConfig(configService),

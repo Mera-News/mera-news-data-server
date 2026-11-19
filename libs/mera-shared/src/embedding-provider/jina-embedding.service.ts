@@ -14,9 +14,9 @@ interface JinaEmbeddingResponse {
 
 /**
  * Jina API adapter for {@link EmbeddingProvider} (Decision 2). Plain HTTPS via
- * `fetch` — no SDK in business logic. Same model prod runs today
- * (`jina-embeddings-v5-text-nano`, 768-dim, `retrieval.passage`), so vectors are
- * drop-in with the existing indexes.
+ * `fetch` — no SDK in business logic. The default model is
+ * `jina-embeddings-v5-text-nano` (768-dim, `retrieval.passage`), the one the
+ * server's score rules are tuned on.
  *
  * `fetch` is injected for testability. The batch size / in-flight tuning lives
  * in the MicroBatcher (embedding service); this adapter issues ONE request,

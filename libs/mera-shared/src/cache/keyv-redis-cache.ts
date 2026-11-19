@@ -21,18 +21,18 @@ import KeyvRedis from '@keyv/redis';
  * prefixes, using a single-colon separator, so the exact key written to Redis
  * is `<namespace>:<key>` (or `<key>` unprefixed when no prefix is set):
  *   - no prefix        -> `fingerprint:abc`
- *   - CACHE_KEY_PREFIX=stg:    -> `stg:fingerprint:abc`
+ *   - CACHE_KEY_PREFIX=alt:    -> `alt:fingerprint:abc`
  *   - CACHE_KEY_PREFIX=v3:     -> `v3:fingerprint:abc`
- *   - CACHE_KEY_PREFIX=stg:v3: -> `stg:v3:fingerprint:abc`
- * These prefixes are load-bearing: staging shares the prod Memorystore
- * instances and is isolated purely by them.
+ *   - CACHE_KEY_PREFIX=alt:v3: -> `alt:v3:fingerprint:abc`
+ * These prefixes are load-bearing: deployments that share one Redis are
+ * isolated purely by them.
  */
 
 /**
  * Normalize a raw CACHE_KEY_PREFIX into a Keyv namespace. Trailing colon(s) are
- * stripped because the namespace separator adds exactly one, so `stg`, `stg:`
- * and `stg::` all yield `stg`; an internal colon is preserved (`stg:v3:` ->
- * `stg:v3`). Empty/unset yields `undefined` — i.e. no prefix at all.
+ * stripped because the namespace separator adds exactly one, so `alt`, `alt:`
+ * and `alt::` all yield `alt`; an internal colon is preserved (`alt:v3:` ->
+ * `alt:v3`). Empty/unset yields `undefined` — i.e. no prefix at all.
  */
 export function normalizeCacheNamespace(raw?: string): string | undefined {
   const trimmed = (raw ?? '').replace(/:+$/, '');
@@ -82,13 +82,13 @@ export function buildKeyvRedisStore(options: KeyvRedisStoreOptions): Keyv {
   const keyv = new Keyv({ store, namespace, useKeyPrefix: true, ttl: ttlMs });
 
   // Keyv's constructor propagates its own namespace onto the underlying redis
-  // store. If left in place, BOTH layers prefix and we get `stg::stg:key`.
-  // Null the store's namespace so Keyv is the sole prefixer -> `stg:key`.
+  // store. If left in place, BOTH layers prefix and we get `alt::alt:key`.
+  // Null the store's namespace so Keyv is the sole prefixer -> `alt:key`.
   store.namespace = undefined;
 
   // @keyv/redis re-emits connection/store errors on the Keyv emitter. An
   // unhandled 'error' event CRASHES the Node process, so a transient Redis
-  // outage (e.g. at Cloud Run boot, before the health probe passes) would take
+  // outage (e.g. at boot, before the health probe passes) would take
   // the whole service down. Swallow + log instead: cache-manager already
   // degrades reads to `undefined` and @keyv/redis swallows write failures by
   // default, so callers keep working against MongoDB while Redis is down.

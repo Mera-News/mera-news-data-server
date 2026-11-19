@@ -37,7 +37,7 @@ export const ArticleFingerprintSchema =
 // Same `{ createdAt: 1 }` key as before (MongoDB allows only one index per key
 // spec), so this is a TTL upgrade of the existing sweep index rather than a new
 // one — the range scans the sweep relied on still work.
-// NOTE (ops): on the prod DB an existing non-TTL `createdAt_1` index must be
+// NOTE (ops): on a database that predates this TTL, an existing non-TTL `createdAt_1` index must be
 // dropped once before this TTL variant can be built (autoIndex reconcile or a
 // one-off migration).
 ArticleFingerprintSchema.index(

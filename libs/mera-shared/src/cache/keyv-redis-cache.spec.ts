@@ -46,11 +46,11 @@ describe('keyv-redis-cache', () => {
     });
 
     it('strips trailing colons only, preserving internal ones', () => {
-      expect(normalizeCacheNamespace('stg:')).toBe('stg');
-      expect(normalizeCacheNamespace('stg')).toBe('stg');
+      expect(normalizeCacheNamespace('alt:')).toBe('alt');
+      expect(normalizeCacheNamespace('alt')).toBe('alt');
       expect(normalizeCacheNamespace('v3:')).toBe('v3');
-      expect(normalizeCacheNamespace('stg:v3:')).toBe('stg:v3');
-      expect(normalizeCacheNamespace('stg::')).toBe('stg');
+      expect(normalizeCacheNamespace('alt:v3:')).toBe('alt:v3');
+      expect(normalizeCacheNamespace('alt::')).toBe('alt');
     });
   });
 
@@ -58,7 +58,7 @@ describe('keyv-redis-cache', () => {
     it('returns a Keyv backed by a redis adapter (a real store, not memory)', () => {
       const keyv = buildKeyvRedisStore({
         url: 'redis://x:6379',
-        namespace: 'stg',
+        namespace: 'alt',
         ttlMs: 3_600_000,
       });
       expect(keyv).toBeInstanceOf(Keyv);
@@ -74,7 +74,7 @@ describe('keyv-redis-cache', () => {
     it('writes `<namespace>:<key>` to Redis and reads it back (single-colon prefix)', async () => {
       const keyv = buildKeyvRedisStore({
         url: 'redis://x:6379',
-        namespace: 'stg',
+        namespace: 'alt',
         ttlMs: 3_600_000,
       });
       const seen = stubRedisClient(keyv);
@@ -83,13 +83,13 @@ describe('keyv-redis-cache', () => {
       const value = await keyv.get('fingerprint:abc');
 
       expect(value).toBe('1');
-      // Exactly one prefix layer -> `stg:` not `stg::stg:`.
+      // Exactly one prefix layer -> `alt:` not `alt::alt:`.
       expect(seen[0]).toEqual([
         'set',
-        'stg:fingerprint:abc',
+        'alt:fingerprint:abc',
         { PX: 7_200_000 },
       ]);
-      expect(seen[1]).toEqual(['get', 'stg:fingerprint:abc']);
+      expect(seen[1]).toEqual(['get', 'alt:fingerprint:abc']);
     });
 
     it('writes unprefixed keys when no namespace is set', async () => {
@@ -105,10 +105,10 @@ describe('keyv-redis-cache', () => {
       expect(seen[0]).toEqual(['set', 'fingerprint:abc', { PX: 7_200_000 }]);
     });
 
-    it('applies the multi-segment `stg:v3` namespace as one prefix', async () => {
+    it('applies the multi-segment `alt:v3` namespace as one prefix', async () => {
       const keyv = buildKeyvRedisStore({
         url: 'redis://x:6379',
-        namespace: normalizeCacheNamespace('stg:v3:'),
+        namespace: normalizeCacheNamespace('alt:v3:'),
         ttlMs: 3_600_000,
       });
       const seen = stubRedisClient(keyv);
@@ -117,7 +117,7 @@ describe('keyv-redis-cache', () => {
 
       expect(seen[0]).toEqual([
         'set',
-        'stg:v3:country-codes',
+        'alt:v3:country-codes',
         { PX: 1_800_000 },
       ]);
     });
@@ -125,7 +125,7 @@ describe('keyv-redis-cache', () => {
     it('propagates the caller TTL to Redis as a PX (ms) expiration', async () => {
       const keyv = buildKeyvRedisStore({
         url: 'redis://x:6379',
-        namespace: 'stg',
+        namespace: 'alt',
         ttlMs: 3_600_000,
       });
       const seen = stubRedisClient(keyv);
@@ -135,14 +135,14 @@ describe('keyv-redis-cache', () => {
       // No explicit TTL -> falls back to the default ttlMs, still as PX.
       await keyv.set('k2', 'v');
 
-      expect(seen[0]).toEqual(['set', 'stg:k1', { PX: 7_200_000 }]);
-      expect(seen[1]).toEqual(['set', 'stg:k2', { PX: 3_600_000 }]);
+      expect(seen[0]).toEqual(['set', 'alt:k1', { PX: 7_200_000 }]);
+      expect(seen[1]).toEqual(['set', 'alt:k2', { PX: 3_600_000 }]);
     });
 
     it('is consumable via cache-manager createCache `stores: [keyv]` (v7 wiring)', async () => {
       const keyv = buildKeyvRedisStore({
         url: 'redis://x:6379',
-        namespace: 'stg',
+        namespace: 'alt',
         ttlMs: 3_600_000,
       });
       const seen = stubRedisClient(keyv);
@@ -154,7 +154,7 @@ describe('keyv-redis-cache', () => {
       expect(value).toBe('1');
       expect(seen[0]).toEqual([
         'set',
-        'stg:fingerprint:abc',
+        'alt:fingerprint:abc',
         { PX: 7_200_000 },
       ]);
     });
@@ -162,7 +162,7 @@ describe('keyv-redis-cache', () => {
     it('does not crash the process on a store `error` event (boot resilience)', () => {
       const keyv = buildKeyvRedisStore({
         url: 'redis://unreachable:6379',
-        namespace: 'stg',
+        namespace: 'alt',
         ttlMs: 3_600_000,
       });
       // An unhandled 'error' on the emitter would throw here and crash Node.

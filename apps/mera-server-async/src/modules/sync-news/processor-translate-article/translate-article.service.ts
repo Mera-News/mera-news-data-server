@@ -178,7 +178,7 @@ export class TranslateArticleService {
       // records NOTHING in Mongo — no status, no attempt counter. Sweep A then
       // re-drives it every hour, this path resolves the same empty title again,
       // and the loop only ends when the 48h retention rule deletes the row
-      // (prod 2026-09-07/09: one article, 44 consecutive cycles, every stage
+      // (seen once as one article over 44 consecutive cycles, every stage
       // reporting success). Terminal here, so the sweep-A attempt cap ends it.
       if (!title.trim()) {
         failureOps.push(

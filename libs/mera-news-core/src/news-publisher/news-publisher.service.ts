@@ -137,15 +137,14 @@ export class NewsPublisherService {
    * DECISION (do not re-open): plain Mongo `$regex`, not an Atlas Search
    * index.
    *   1. ~10,000 publication-source docs and ~9,300 news-publisher docs
-   *      (staging) — the whole collection fits in RAM, so an unanchored
+   *      (a large catalogue) — the whole collection fits in RAM, so an unanchored
    *      case-insensitive regex is a cheap COLLSCAN. `$regex` cannot use an
    *      index at all (only a leading-anchor `^prefix` form can), and
    *      that's fine at this size — revisit only if either
    *      collection grows into the hundreds of thousands.
-   *   2. Atlas Search indexes are dropped on staging by default (see
-   *      `docs/self-host.md`) — a search feature
-   *      built on one would silently return zero results on staging until
-   *      someone re-runs a mongosh snippet.
+   *   2. A deployment may run without an Atlas Search index (see
+   *      `docs/self-host.md`) — a search feature built on one would silently
+   *      return zero results there until someone creates the index.
    *   3. Atlas Search's default analyzer stems and tokenizes, which would
    *      match "time" and "india" as separate tokens — worse than substring
    *      matching for a proper-noun lookup like "Times of India".

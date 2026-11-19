@@ -9,7 +9,7 @@
  *     published, or a 404 caused by our own tidying reads as "https unavailable"
  *     and needlessly blocks a fine article.
  *   BLOCK FOR THE DAY — the verdict is cached PER HOST for 24h. The 3,912 http
- *     articles in prod span a far smaller set of hosts, so per-host caching
+ *     articles of a large catalogue span a far smaller set of hosts, so per-host caching
  *     turns thousands of network probes into dozens, and the 24h TTL is what
  *     makes "try again next day if they fixed it" cost nothing.
  *

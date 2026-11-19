@@ -15,7 +15,7 @@ import { HealthController } from '@mera/shared/health/health.controller';
 
 /**
  * Metadata key + decorator for the handful of routes that must answer WITHOUT
- * a credential — in practice only the health endpoint, which Cloud Run's
+ * a credential — in practice only the health endpoint, which a platform's
  * startup and liveness probes call with no headers at all.
  *
  * It is an explicit opt-out on the handler rather than a path check inside the
@@ -35,8 +35,7 @@ export const API_KEY_VERIFIER = Symbol('API_KEY_VERIFIER');
  * sessions — there is no `AuthMiddleware` here and no `@CurrentUser` anywhere,
  * because its caller cannot send a user identity and must not be able to. So a
  * shared `x-api-key` is the whole application-layer authentication story,
- * sitting behind Cloud Run IAM (the caller additionally presents a Google
- * id-token, which the platform verifies before the request ever arrives).
+ * possibly behind a platform's own access control in front of the service.
  *
  * Modelled on `apps/mera-server-async`'s `ApiKeyGuard`, with two deliberate
  * differences:

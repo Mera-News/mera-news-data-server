@@ -16,8 +16,8 @@ import { createClient } from 'redis';
  * `PERSISTENT_REDIS_URL`, fallback `REDIS_URL`). cache-manager v7 exposes only
  * get/set/del one key at a time, so a direct node-redis client (already a repo
  * dependency) is used here. Keys are namespaced exactly like the Keyv cache
- * (`<namespace>:article-cache:{id}`) so staging (`stg:`) and prod stay isolated
- * on the shared instance.
+ * (`<namespace>:article-cache:{id}`) so deployments with different prefixes stay
+ * isolated on a shared instance.
  *
  * VECTOR CODEC: the two 768-dim Float32 vectors dominate the entry size. They
  * are stored base64-encoded Float32 (~3× smaller than JSON number arrays) and

@@ -9,7 +9,7 @@ import { findEgressRefusal } from '../url/public-egress';
 /**
  * Pool-wide circuit breaker for the outbound RSS-fetch proxy pool.
  *
- * Background (prod, 2026-08-06 and 2026-08-11). A burst of `HTTP 503`s from the
+ * Background (a production incident, seen twice). A burst of `HTTP 503`s from the
  * proxy pool put every one of the 48 `load-rss-feed` worker slots on the ~90s
  * three-attempt retry path at once. Throughput collapsed from ~1000 feeds/min
  * to exactly 48/min — flat, for 30 minutes — the queue could not drain inside

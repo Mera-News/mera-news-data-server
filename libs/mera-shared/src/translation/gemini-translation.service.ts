@@ -60,7 +60,7 @@ export class GeminiTranslationService implements TranslationProvider {
    * (sticky for the process lifetime) only on model-level terminal errors —
    * 404/NOT_FOUND/"model … not available" — never on 429/5xx, which keep the
    * existing transient retry. Guards against a provider-side model rename/
-   * removal or config error (the staging 404 incident) stalling translation
+   * removal or config error (a 404 seen once in a test deployment) stalling translation
    * for hours.
    *
    * Verified by real `generateContent` calls on the vertex transport at
@@ -143,8 +143,8 @@ export class GeminiTranslationService implements TranslationProvider {
    * WARNs (`translation_model_unavailable`) on 404/error, NEVER throws.
    * FIRE-AND-FORGET with a hard 5s timeout per fetch — boot
    * must never block on external HTTP (one deploy window coincided with a
-   * dependency outage; awaited validation would have eaten into Cloud Run's
-   * 4-minute startup-probe budget). */
+   * dependency outage; awaited validation would have eaten into a platform's
+   * startup-probe budget). */
   onModuleInit(): void {
     this.validationDone = this.validateModels();
   }

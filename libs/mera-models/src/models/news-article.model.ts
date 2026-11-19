@@ -197,14 +197,14 @@ export class NewsArticle {
   // Internal fields used by async service (not exposed in GraphQL).
   // select: false keeps these multi-KB vectors out of every read path unless a
   // caller explicitly opts in via .select('+embedding_article_data_*'); hydrating
-  // them unfiltered OOMed news-graphql (Cloud Run 1 Gi heap).
+  // them unfiltered OOMed the API on a 1 GiB heap.
   @Prop({ type: [Number], default: [], select: false })
   embedding_article_data_retrieval?: number[];
 
   // The `embedding_article_data_text_matching_internal_only` prop
   // (v3 drift, `default: []`) was REMOVED from the schema — its default was
   // materializing an empty array on every new doc while the pipeline writes the
-  // prod-canonical UNsuffixed `embedding_article_data_text_matching` (via
+  // canonical UNsuffixed `embedding_article_data_text_matching` (via
   // strict:false, undeclared here on purpose so `select: false` hygiene is
   // handled by the read-path exclusion strings in graphql). graphql exclusion
   // lists reference both names as plain string paths and need no declaration.

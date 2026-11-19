@@ -14,7 +14,7 @@ const DATA_PREVIEW_MAX_CHARS = 500;
  * **Logs** tabs.
  *
  * Both methods write to Redis via the job, independent of the Pino log level
- * (prod Pino is `warn`-only). They never throw — a logging hiccup must never
+ * (often `warn`-only in production). They never throw — a logging hiccup must never
  * fail the underlying job.
  */
 export interface JobReporter {
@@ -42,7 +42,7 @@ export const NOOP_JOB_REPORTER: JobReporter = {
  * - Narrates every job's lifecycle into Bull Board via `job.log()` (Logs tab)
  *   and `job.updateProgress()` (Progress tab): a start line, 0→100 progress,
  *   and a success/failure line. This is intentionally the **detailed** sink —
- *   prod Pino is pinned to `warn`, so step detail lives here, almost free.
+ *   production Pino often runs at `warn`, so step detail lives here, almost free.
  *
  * Subclasses implement `processJob()` instead of `process()`. Heavy/iterative
  * processors can call `this.makeReporter(job)` and thread the reporter into

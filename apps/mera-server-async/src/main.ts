@@ -35,8 +35,8 @@ async function bootstrap() {
   app.useGlobalFilters(new HttpExceptionFilter(isProduction));
 
   // Log uncaught exceptions and exit — leaving the process running after an
-  // uncaught exception risks undefined state. The orchestrator (Cloud Run/GKE)
-  // will restart the process.
+  // uncaught exception risks undefined state. The process manager
+  // (systemd, a container platform) restarts it.
   process.on('uncaughtException', (error: Error) => {
     logger.error(
       { err: error, context: 'UncaughtException' },
@@ -54,7 +54,7 @@ async function bootstrap() {
   });
 
   process.on('SIGTERM', () => {
-    logger.warn('SIGTERM received — starting graceful shutdown');
+    logger.warn('SIGTERM received, starting graceful shutdown');
   });
 
   const port =

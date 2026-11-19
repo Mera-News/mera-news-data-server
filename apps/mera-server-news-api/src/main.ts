@@ -14,8 +14,8 @@ import { newsApiOpen } from './open-mode';
  *
  * Two deliberate differences from the app-facing service:
  *
- *  - NO CORS. Nothing browser-based calls this; the only client is another
- *    Cloud Run service. Enabling CORS would advertise it to page scripts.
+ *  - NO CORS. Nothing browser-based calls this; its clients are other
+ *    services and scripts. Enabling CORS would advertise it to page scripts.
  *  - The API key is validated at BOOT, not merely per request. A deployment
  *    missing its credential otherwise starts healthy, passes its startup probe
  *    and then 401s every call — a failure that looks like the caller's fault.
@@ -37,7 +37,7 @@ async function bootstrap() {
     );
   } else if (!configService.get<string>('MERA_NEWS_API_KEY')) {
     throw new Error(
-      'MERA_NEWS_API_KEY is not set — refusing to start. This service has no ' +
+      'MERA_NEWS_API_KEY is not set, so the API refuses to start. This service has no ' +
         'other authentication, so booting without it would serve the news ' +
         'corpus unauthenticated.',
     );

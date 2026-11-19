@@ -9,7 +9,7 @@ import {
 } from './pre-process-articles-fanout.service';
 
 /**
- * `pre-process-articles-fanout` processor — fired by a Cloud Scheduler cron via
+ * `pre-process-articles-fanout` processor — fired by a scheduler via
  * `/invoke {queue_name: pre-process-articles-fanout}`. Single-concurrency (one fan-out at
  * a time), no per-job timeout, `maxQueueAgeMs=Infinity` (the claim queries are
  * the freshness authority, not queue age).

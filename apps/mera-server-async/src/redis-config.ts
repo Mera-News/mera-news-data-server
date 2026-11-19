@@ -10,20 +10,20 @@ import {
 /**
  * Redis connection wiring for the async service.
  *
- * The async service talks to TWO logical Redis roles that infra is splitting
- * onto two Memorystore instances:
+ * The async service talks to TWO logical Redis roles, which can live on one
+ * instance or on two:
  *
  *   - BullMQ queues/flows  → `news-bullmq-redis` (noeviction).  Reached via
  *     `REDIS_URL`, namespaced by `BULLMQ_PREFIX` (default `bull` — i.e. exactly
- *     BullMQ's own default, so this is a no-op until infra sets it).
+ *     BullMQ's own default, so this is a no-op until a deployment sets it).
  *   - Volatile TTL'd data cache (RSS-dedup fingerprints, pub-source-info) →
  *     `news-persistent-redis` (volatile-ttl).  Reached via
  *     `PERSISTENT_REDIS_URL`, falling back to `REDIS_URL` when unset (no-op
  *     default), namespaced by `CACHE_KEY_PREFIX`.
  *
- * Staging services SHARE the prod instances and are isolated purely by these
- * key prefixes, so the prefixes are load-bearing: a prefix collision would let
- * staging read/overwrite prod's keys (e.g. silently dropping articles prod
+ * Two deployments that share these instances are isolated purely by these key
+ * prefixes, so the prefixes are load-bearing: a prefix collision would let one
+ * read/overwrite the other's keys (e.g. silently dropping articles the other
  * already ingested via the RSS-dedup fingerprint cache).
  */
 
@@ -32,7 +32,7 @@ export const CACHE_TTL_MS = 3600000; // 1 hour default TTL in milliseconds
 
 /**
  * The BullMQ key prefix for this service. Defaults to `bull` (BullMQ's own
- * default), so unset === current behavior. Staging sets `bull-stg`.
+ * default), so unset === current behavior. A second deployment on the same Redis sets its own, such as `bull-alt`.
  */
 export function resolveBullmqPrefix(configService: ConfigService): string {
   return configService.get<string>('BULLMQ_PREFIX', DEFAULT_BULLMQ_PREFIX);
@@ -61,8 +61,8 @@ export function buildBullRootConfig(configService: ConfigService) {
  * Normalize a cache key prefix into a Keyv namespace. Re-exported from
  * `@mera/shared` (see {@link normalizeCacheNamespace}); kept under this name for
  * back-compat. An empty/unset prefix means "no prefix"; any trailing colon(s)
- * are stripped because Keyv appends exactly one as its separator, so both `stg`
- * and `stg:` yield the on-wire key `stg:<key>`.
+ * are stripped because Keyv appends exactly one as its separator, so both `alt`
+ * and `alt:` yield the on-wire key `alt:<key>`.
  */
 export const normalizeCacheKeyPrefix = normalizeCacheNamespace;
 

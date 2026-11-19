@@ -132,7 +132,7 @@ export class NewsClusterService {
     const articles = await this.newsArticleModel
       .find({ _id: { $in: articleIds }, ...SERVABLE_URL_SECURITY_FILTER })
       .select(
-        // Exclude BOTH text-matching variants: prod v1 writes the unsuffixed
+        // Exclude BOTH text-matching variants: the pipeline writes the unsuffixed
         // field; `_internal_only` covers stray v3-drift docs.
         '-embedding_article_data_retrieval -embedding_article_data_text_matching -embedding_article_data_text_matching_internal_only',
       )

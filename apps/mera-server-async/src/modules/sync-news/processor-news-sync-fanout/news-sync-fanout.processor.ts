@@ -9,7 +9,7 @@ import {
 } from './news-sync-fanout.service';
 
 /**
- * `news-sync-fanout` processor — fired by the `:00` Cloud Scheduler cron via
+ * `news-sync-fanout` processor — fired at :00 by a scheduler (or LOCAL_SCHEDULES) via
  * `/invoke {queue_name: news-sync-fanout}`. Single-concurrency (one fan-out at a
  * time), no per-job timeout, `maxQueueAgeMs=Infinity` (the sweep queries are the
  * freshness authority, not queue age).

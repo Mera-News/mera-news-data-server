@@ -1,6 +1,6 @@
 /**
  * `pre-process-articles-fanout` — the entrypoint of the served-only article
- * PRE-PROCESSING stage (fired by a Cloud Scheduler cron via
+ * PRE-PROCESSING stage (fired by a scheduler via
  * `/invoke {queue_name: pre-process-articles-fanout}`).
  *
  * The stage is a single LLM pass per batch that enriches an article with
