@@ -30,6 +30,7 @@ import { BuildHeadlineEditionsModule } from './modules/headline-editions/process
 
 // Import queue modules - data retention
 import { DataRetentionModule } from './modules/data-retention/data-retention.module';
+import { LocalSchedulesModule } from './modules/local-schedules/local-schedules.module';
 
 // Import shared utilities
 import { AxiosModule } from './modules/shared-utilities/axios/axios.module';
@@ -99,6 +100,7 @@ const ALL_QUEUES = Object.values(QueueName);
     LinkTopicToClusterModule,
     BuildHeadlineEditionsModule,
     DataRetentionModule,
+    LocalSchedulesModule,
 
     // BullMQ queues/flows. The `prefix` (BULLMQ_PREFIX, default `bull`)
     // propagates to every registerQueue()/registerFlowProducer() below and to

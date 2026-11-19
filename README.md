@@ -40,7 +40,7 @@ npm run news-api
 - `npm run async` starts the ingest worker. It listens on `PORT`, or `ASYNC_PORT` (default 8080).
 - `npm run news-api` starts the GraphQL news API. It listens on `PORT`, or `NEWS_API_PORT` (default 3002).
 
-The server has no built-in scheduler. Ingest runs when something creates a job. The worker exposes `POST /invoke` for that. Send an `x-api-key` header that matches `MERA_SERVER_ASYNC_API_KEY`, and a JSON body with a `queue_name` and an optional `data` object:
+The worker can run the hourly jobs itself with `LOCAL_SCHEDULES=true`; otherwise run them from your own scheduler. Use one or the other, never both. Ingest runs when something creates a job. The worker exposes `POST /invoke` for that. Send an `x-api-key` header that matches `MERA_SERVER_ASYNC_API_KEY`, and a JSON body with a `queue_name` and an optional `data` object:
 
 ```
 curl -X POST http://localhost:8080/invoke \

@@ -49,9 +49,17 @@ export interface RecordedJob {
   opts?: JobsOptions;
 }
 
+export interface RecordedScheduler {
+  id: string;
+  repeat: { pattern?: string };
+  template?: { name?: string; data?: unknown };
+}
+
 /** Stands in for a BullMQ Queue: records what the code enqueues. */
 export class QueueRecorder {
   readonly jobs: RecordedJob[] = [];
+  readonly schedulers: RecordedScheduler[] = [];
+  readonly removedSchedulers: string[] = [];
   private nextId = 1;
 
   constructor(readonly name: string) {}
@@ -63,6 +71,20 @@ export class QueueRecorder {
 
   addBulk(jobs: RecordedJob[]) {
     return Promise.all(jobs.map((j) => this.add(j.name, j.data, j.opts)));
+  }
+
+  upsertJobScheduler(
+    id: string,
+    repeat: RecordedScheduler['repeat'],
+    template?: RecordedScheduler['template'],
+  ) {
+    this.schedulers.push({ id, repeat, template });
+    return Promise.resolve();
+  }
+
+  removeJobScheduler(id: string) {
+    this.removedSchedulers.push(id);
+    return Promise.resolve(true);
   }
 
   /** Removes and returns every recorded job. */
