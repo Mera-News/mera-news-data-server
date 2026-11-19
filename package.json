@@ -4,7 +4,7 @@
   "description": "News ingest and news API for Mera News: RSS in, translated and embedded articles out.",
   "author": "Mera Labs",
   "private": true,
-  "license": "AGPL-3.0-only",
+  "license": "SEE LICENSE IN LICENSE",
   "scripts": {
     "async": "nest start mera-server-async",
     "news-api": "nest start mera-server-news-api",

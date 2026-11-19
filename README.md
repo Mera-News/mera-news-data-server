@@ -36,10 +36,22 @@ Place names from GeoNames (https://www.geonames.org), licensed under CC BY 4.0 (
 
 The topic categories are the content categories of the Google Cloud Natural Language API (https://docs.cloud.google.com/natural-language/docs/categories), licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/).
 
-## License
+## Licence
 
-AGPL-3.0-only. See [LICENSE](LICENSE). If the AGPL does not fit your use, see [COMMERCIAL.md](COMMERCIAL.md). The names and logos are covered by [TRADEMARK.md](TRADEMARK.md).
+Copyright Mera Labs B.V.
+
+Required Notice: Copyright Mera Labs B.V. (https://mera.news)
+
+This code is source-available under the PolyForm Shield License 1.0.0. See `LICENSE`.
+
+In short: you may run it, change it and build on it for any purpose, except to provide a product
+that competes with this software or with a product Mera Labs provides using it, such as Mera News.
+This summary is not the licence. The `LICENSE` file is.
+
+Mera News and Mera Protocol are trademarks. See `TRADEMARK.md`.
+For a use the licence does not allow, see `COMMERCIAL.md`.
+To contribute, see `CONTRIBUTING.md`.
 
 ## Contributing
 
-Issues are welcome. Code contributions are not accepted yet.
+Issues and pull requests are welcome. See `CONTRIBUTING.md`.

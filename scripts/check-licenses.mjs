@@ -1,4 +1,4 @@
-// Fails when an installed dependency carries a licence that is not compatible with the AGPL.
+// Fails when an installed dependency carries a licence that is not allowed in this repository.
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -21,9 +21,6 @@ const ALLOWED = new Set([
   'LGPL-2.1-or-later',
   'LGPL-3.0-only',
   'LGPL-3.0-or-later',
-  'GPL-3.0-or-later',
-  'AGPL-3.0-only',
-  'AGPL-3.0-or-later',
 ]);
 
 // Checked only after a package fails; each applies to dev-only lock entries.
