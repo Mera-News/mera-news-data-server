@@ -1,5 +1,6 @@
-import type { Type } from '@nestjs/common';
+import { Global, Module, type Type } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { getConnectionToken } from '@nestjs/mongoose';
 import { Test } from '@nestjs/testing';
 import { http, HttpResponse } from 'msw';
 import { OpenAiCompatibleEmbeddingService } from '../../../../libs/mera-shared/src/embedding-provider/openai-compatible-embedding.service';
@@ -116,9 +117,22 @@ describe('OpenAI-compatible embeddings adapter', () => {
 
 // The real composition modules, booted alone: a failed provider factory
 // aborts a full app boot while its other providers are still starting.
+// The connection is a stub with no database: a bad setting must be refused
+// before the embedder factory reads anything from Mongo.
+@Global()
+@Module({
+  providers: [{ provide: getConnectionToken(), useValue: { db: undefined } }],
+  exports: [getConnectionToken()],
+})
+class NoDatabaseModule {}
+
 const boot = (module: Type<unknown>) =>
   Test.createTestingModule({
-    imports: [ConfigModule.forRoot({ isGlobal: true }), module],
+    imports: [
+      ConfigModule.forRoot({ isGlobal: true }),
+      NoDatabaseModule,
+      module,
+    ],
   }).compile();
 
 describe.each([

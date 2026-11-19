@@ -1,8 +1,9 @@
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule, getConnectionToken } from '@nestjs/mongoose';
 import { Test } from '@nestjs/testing';
 import { Logger, type INestApplicationContext } from '@nestjs/common';
 import { Types, type Connection } from 'mongoose';
+import { EMBEDDING_PROVIDER } from '@mera/shared';
 import { SeedCanonicalTopicsModule } from '../../../apps/mera-scripts/src/commands/seed-canonical-topics/seed-canonical-topics.module';
 import { SeedCanonicalTopicsService } from '../../../apps/mera-scripts/src/commands/seed-canonical-topics/seed-canonical-topics.service';
 import { TopicScoresModule } from '../../../apps/mera-scripts/src/commands/topic-scores/topic-scores.module';
@@ -114,6 +115,41 @@ describe('seed-canonical-topics command', () => {
     expect(await links().findOne({ articleId })).toMatchObject({
       topicId: row!._id,
       canonical: true,
+    });
+  });
+
+  describe('the embedding meta document', () => {
+    // The provider factory is called directly: a refused whole-app boot
+    // leaves a connection open that breaks the next suite on the worker.
+    const factory = () => {
+      const providers: {
+        provide: unknown;
+        useFactory: (...args: unknown[]) => Promise<unknown>;
+      }[] = Reflect.getMetadata('providers', SeedCanonicalTopicsModule);
+      return providers.find((p) => p.provide === EMBEDDING_PROVIDER)!
+        .useFactory;
+    };
+    const build = () => factory()(app.get(ConfigService), connection);
+
+    it('is written when the seed command builds its embedder', async () => {
+      await build();
+
+      expect(
+        await connection.collection('deployment-meta').findOne({
+          _id: 'embedding' as never,
+        }),
+      ).toMatchObject({ provider: 'fake', dims: 768 });
+    });
+
+    it('refuses to build the embedder over another model', async () => {
+      await connection.collection('deployment-meta').insertOne({
+        _id: 'embedding' as never,
+        provider: 'fake',
+        model: 'some-other-model',
+        dims: 768,
+      });
+
+      await expect(build()).rejects.toThrow('some-other-model');
     });
   });
 

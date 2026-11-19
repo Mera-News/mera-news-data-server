@@ -1,6 +1,8 @@
 import { ConfigService } from '@nestjs/config';
+import type { Db } from 'mongodb';
 import { assertFakeAllowed, readText } from '../config/env-choice';
 import { embeddingProvider } from './embedding-config';
+import { checkEmbeddingMeta } from './embedding-meta';
 import type { EmbeddingProvider } from './embedding-provider.port';
 import { FakeEmbeddingProvider } from './fake-embedding.provider';
 import { JinaEmbeddingService } from './jina-embedding.service';
@@ -13,9 +15,7 @@ import { OpenAiCompatibleEmbeddingService } from './openai-compatible-embedding.
  * (`EMBEDDING_BASE_URL`, `EMBEDDING_MODEL`), `fake` the deterministic offline
  * provider, refused unless `ALLOW_FAKE_PROVIDERS=true`.
  */
-export function pipelineEmbeddingProvider(
-  config: ConfigService,
-): EmbeddingProvider {
+function buildEmbedder(config: ConfigService): EmbeddingProvider {
   switch (embeddingProvider(config)) {
     case 'fake':
       assertFakeAllowed(config, 'EMBEDDING_PROVIDER');
@@ -33,4 +33,17 @@ export function pipelineEmbeddingProvider(
       }
       return new JinaEmbeddingService(config);
   }
+}
+
+/**
+ * The pipeline embedder, returned only after the database's embedding meta document
+ * agrees with the configuration (and recorded when the database has none).
+ */
+export async function pipelineEmbeddingProvider(
+  config: ConfigService,
+  connection: { db?: Db },
+): Promise<EmbeddingProvider> {
+  const embedder = buildEmbedder(config);
+  await checkEmbeddingMeta(connection.db!, config, { write: true });
+  return embedder;
 }

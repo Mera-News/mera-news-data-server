@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { getConnectionToken } from '@nestjs/mongoose';
 import { EMBEDDING_PROVIDER } from '@mera/shared';
 import { pipelineEmbeddingProvider } from '@mera/shared/embedding-provider/pipeline-embedding-provider';
 
@@ -13,7 +14,7 @@ import { pipelineEmbeddingProvider } from '@mera/shared/embedding-provider/pipel
     {
       provide: EMBEDDING_PROVIDER,
       useFactory: pipelineEmbeddingProvider,
-      inject: [ConfigService],
+      inject: [ConfigService, getConnectionToken()],
     },
   ],
   exports: [EMBEDDING_PROVIDER],
