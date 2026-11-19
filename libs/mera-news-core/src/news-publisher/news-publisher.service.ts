@@ -143,7 +143,7 @@ export class NewsPublisherService {
    *      that's fine at this size — revisit only if either
    *      collection grows into the hundreds of thousands.
    *   2. Atlas Search indexes are dropped on staging by default (see
-   *      `CREATE_VECTOR_INDEX.md`) — a search feature
+   *      `docs/self-host.md`) — a search feature
    *      built on one would silently return zero results on staging until
    *      someone re-runs a mongosh snippet.
    *   3. Atlas Search's default analyzer stems and tokenizes, which would

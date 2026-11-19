@@ -169,7 +169,7 @@ export class SearchIndexService implements SearchIndexState, OnModuleInit {
       case 'missing':
         return this.creationOn
           ? 'Not found. The worker creates it at its next boot.'
-          : 'Not found, and SEARCH_INDEX_CREATE=false, so it is never created for you: create it by hand (see CREATE_VECTOR_INDEX.md).';
+          : 'Not found, and SEARCH_INDEX_CREATE=false, so it is never created for you: create it by hand (see docs/self-host.md, "Create the indexes by hand").';
       case 'building':
         return 'Still building. It answers once the build finishes.';
       case 'failed':
