@@ -112,6 +112,7 @@
     {
       "feed": "northern-ledger",
       "story": null,
+      "keywords": ["tidewick"],
       "slug": "tidewick-lighthouse",
       "title": "Tidewick Lighthouse reopens to visitors after a long restoration",
       "description": "Visitors can climb the Tidewick Lighthouse again from Saturday, after volunteers spent three years restoring the lamp room and the stairs."
@@ -119,6 +120,7 @@
     {
       "feed": "el-diario-del-valle",
       "story": null,
+      "keywords": ["marmolar"],
       "slug": "festival-marmolar",
       "title": "El Festival de Marmolar abre su programa de otoño con música en la plaza",
       "description": "El pueblo de Marmolar celebra desde hoy su festival de otoño, con conciertos en la plaza mayor, mercado de artesanía y cenas populares hasta el domingo."

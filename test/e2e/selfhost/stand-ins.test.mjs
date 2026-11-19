@@ -50,6 +50,23 @@ test('texts about one story are about 0.99 related, other texts about 0.5', asyn
   assert.ok(cosine(topic, bridge) < 0.2);
 });
 
+test('lone items point away from every story and each other, whatever text surrounds the keyword', async () => {
+  const { body } = await embed([
+    'Tidewick Lighthouse reopens',
+    'Tidewick Lighthouse reopens to visitors\nCountry: GBR\nCategory: Travel',
+    'El Festival de Marmolar abre su programa',
+    'Brightwater orders 40 electric buses',
+    'Halvorsen Bridge reopens',
+    'Kestrel Orbital test flight',
+  ]);
+  const [a, a2, b, ...stories] = body.data.map((d) => d.embedding);
+  assert.deepEqual(a, a2);
+  assert.ok(cosine(a, b) < -0.5);
+  for (const s of stories) {
+    assert.ok(cosine(a, s) < -0.2 && cosine(b, s) < -0.2);
+  }
+});
+
 test('the same text always gets the same vector', async () => {
   const a = (await embed('qwxz plorb')).body.data[0].embedding;
   const b = (await embed(['qwxz plorb'])).body.data[0].embedding;

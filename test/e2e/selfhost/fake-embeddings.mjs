@@ -7,16 +7,24 @@ import { fileURLToPath } from 'node:url';
  * A stand-in for an OpenAI-compatible embeddings server (what Ollama offers
  * at http://127.0.0.1:11434/v1), so the self-hosting guide can be followed
  * without a model. A text that mentions a story keyword gets that story's
- * fixed direction plus a little noise (about 0.99 related to its siblings);
- * any other text gets a direction of its own (about 0.5 related to anything).
+ * fixed direction plus a little noise (about 0.99 related to its siblings).
+ * A lone item (story null, matched by its own keywords) points away from every
+ * story and from the other lone items, so clustering leaves it alone whatever
+ * text the server embeds. Any other text gets a direction of its own (about
+ * 0.5 related to anything).
  */
 
 const MODEL = 'nomic-embed-text';
 const DIMS = 768;
 const NOISE = 0.1;
-const { stories } = JSON.parse(
+// How far a lone item leans away from the stories. With three stories and two
+// lone items, 0.5 puts a lone item at distance 1.59 from each story and 1.79
+// from the other lone item; stories sit 1.41 apart.
+const AWAY = 0.5;
+const { stories, items } = JSON.parse(
   readFileSync(new URL('fixtures/stories.json', import.meta.url), 'utf8'),
 );
+const loners = items.filter((i) => i.story === null);
 
 function hashDirection(text) {
   let seed = createHash('sha256').update(text).digest().readUInt32LE(0);
@@ -36,11 +44,26 @@ const unit = (v) => {
   return v.map((x) => x / norm);
 };
 
+const matches = (lower, keywords) => keywords.some((k) => lower.includes(k));
+
+// Lone item j: away from the mean story direction, plus its corner of a
+// regular simplex on axes after the stories', so lone items oppose each other.
+function lonerDirection(j) {
+  const v = new Array(DIMS).fill(0);
+  stories.forEach((_, i) => (v[i] = -AWAY / Math.sqrt(stories.length)));
+  const m = loners.length;
+  const scale = m > 1 ? Math.sqrt(m / (m - 1)) : 1;
+  loners.forEach((_, k) => {
+    v[stories.length + k] = scale * ((k === j ? 1 : 0) - (m > 1 ? 1 / m : 0));
+  });
+  return unit(v);
+}
+
 export function embed(text) {
   const lower = text.toLowerCase();
-  const story = stories.findIndex((s) =>
-    s.keywords.some((k) => lower.includes(k)),
-  );
+  const loner = loners.findIndex((l) => matches(lower, l.keywords));
+  if (loner >= 0) return lonerDirection(loner);
+  const story = stories.findIndex((s) => matches(lower, s.keywords));
   if (story < 0) return unit(hashDirection(text));
   const noise = unit(hashDirection(text));
   return unit(noise.map((x, i) => (i === story ? 1 : 0) + NOISE * x));
