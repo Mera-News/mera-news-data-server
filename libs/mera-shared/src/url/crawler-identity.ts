@@ -33,7 +33,15 @@
  * vendors recognise as a declared crawler, and the URL is a route to contact us
  * instead of blocking us.
  *
+ * This is Mera's hosted value: hosted deployments set it as
+ * FEED_FETCH_USER_AGENT. Self-hosted installs default to
+ * DEFAULT_FEED_USER_AGENT, so a publisher's rules for Mera's fetcher never
+ * apply to other people's installs.
+ *
  * FROZEN. Exact bytes, including the single space before the parenthesis, the
  * lowercase path and the absent trailing slash.
  */
 export const CRAWLER_USER_AGENT = 'MeraNewsBot/1.0 (+https://mera.news/bot)';
+
+/** What a self-hosted install sends when FEED_FETCH_USER_AGENT is unset. */
+export const DEFAULT_FEED_USER_AGENT = 'mera-news-data-server (self-hosted)';

@@ -63,6 +63,7 @@ export const HARNESS_ENV: Record<string, string> = {
   NEWS_API_OPEN_RATE_LIMIT: '',
   FEED_FETCH_ALLOW_HOSTS: '',
   FEED_FETCH_USER_AGENT: '',
+  SEARCH_INDEX_CREATE: '',
   GEMINI_TRANSPORT: 'developer',
   HTTP_UPGRADE_PROBE_ENABLED: 'false',
   PRE_PROCESS_ARTICLES_ENABLED: 'false',
