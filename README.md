@@ -12,7 +12,7 @@ The news data server behind Mera News, by Mera Labs B.V. It reads RSS feeds that
 
 Set `EMBEDDING_PROVIDER=fake` and `TRANSLATION_PROVIDER=fake` to run offline without keys. The fake providers are for local runs and tests.
 
-The other variables are in [apps/mera-server-async/.env.example](apps/mera-server-async/.env.example). The main ones are `MONGODB_URI`, `REDIS_URL` and `MERA_SERVER_ASYNC_API_KEY`. The news API refuses to start without `MERA_NEWS_API_KEY`.
+The other variables are in [apps/mera-server-async/.env.example](apps/mera-server-async/.env.example). The main ones are `MONGODB_URI`, `REDIS_URL`, `MERA_SERVER_ASYNC_API_KEY` and `MERA_NEWS_API_KEY`.
 
 Export the variables in your shell, or put them in a `.env` file. The ingest worker reads `apps/mera-server-async/.env`, `npm run load-rss` reads `apps/mera-scripts/.env`, and every service also reads a `.env` at the repository root. Run every command from the repository root.
 
@@ -52,6 +52,29 @@ curl -X POST http://localhost:8080/invoke \
 The `news-sync-fanout` queue creates a `load-rss-feed` job for each feed that is due, then translates and embeds what arrives. A `queue_name` that is not a known queue is refused with 400. Run the call from your own scheduler, such as cron, as often as you want new articles. Other valid queue names are listed in `libs/mera-shared/src/constants/queue-names.enum.ts`.
 
 Grouping articles into stories is done by a separate clustering job that is not part of this repository.
+
+## Who can call the news API
+
+Every request needs an `x-api-key` header that matches `MERA_NEWS_API_KEY`. Unless open mode is on, the API refuses every query until that variable is set. `/health` needs no key.
+
+`NEWS_API_OPEN=true` serves requests without a key. It is meant for one person's own install. Each address may then make `NEWS_API_OPEN_RATE_LIMIT` requests a minute (default 60).
+
+Search is for key holders only. In open mode `searchNews` always answers with the error code `SEARCH_NOT_OFFERED`, because each new search costs an embeddings call and an open server has no key to limit it by. To offer search, run the API with a key.
+
+## Topic categories
+
+The `canonicalTopics` query and the topic filter of `worldHeadlines` read a tree of categories that you seed yourself:
+
+```
+npm run seed-canonical-topics -- --allow-db <database>
+npm run seed-canonical-topics -- --allow-db <database> --execute
+```
+
+`--allow-db` must name the database in `MONGODB_URI`, and the command refuses any other. Without `--execute` it only reports what it would write. It writes the first level of the tree, embeds each category with your embeddings provider, and links the articles of the last 48 hours to their category (`--backfill-window-hours` changes the window). After that, the worker links new articles as it embeds them, once it has reloaded the tree (at most an hour later). Until the tree is seeded, `canonicalTopics` answers an empty list.
+
+Articles are linked only with the default Jina model at 768 dimensions, the model the link thresholds were tuned on. With another model the categories are still seeded, and a topic filter answers `NO_TOPIC_LINKS`.
+
+The categories are the content categories of the Google Cloud Natural Language API (https://docs.cloud.google.com/natural-language/docs/categories), licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/).
 
 ## Place data
 

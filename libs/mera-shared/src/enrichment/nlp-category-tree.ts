@@ -3,10 +3,12 @@
  * every path in apps/mera-scripts/seed-data/google-nlp-categories.json plus
  * every intermediate ancestor (1094 nodes, sorted).
  *
+ * The categories are Google's (https://docs.cloud.google.com/natural-language/docs/categories),
+ * licensed under CC BY 4.0.
+ *
  * GENERATED, do not edit by hand. A library must never read seed-data at
- * runtime, so the tree is inlined. Regenerate after the seed file changes with
- * the one-liner in apps/mera-scripts/eval-data/enrichment-bakeoff/lib/spec.mjs
- * (loadTaxonomy) and paste the sorted list here.
+ * runtime, so the tree is inlined. After the seed file changes, regenerate it:
+ * every path in the file plus every ancestor path, deduplicated and sorted.
  *
  * Separate from CONTENT_CATEGORIES (content-taxonomy.ts), which stays the
  * 283-path two-level enum the Gemini adapter ships in its responseSchema.
