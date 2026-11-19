@@ -31,7 +31,10 @@ module.exports = {
       globalSetup: '<rootDir>/test/harness/global-setup.ts',
       globalTeardown: '<rootDir>/test/harness/global-teardown.ts',
       setupFiles: ['<rootDir>/test/harness/setup-env.ts'],
-      setupFilesAfterEnv: ['<rootDir>/test/harness/msw.ts'],
+      setupFilesAfterEnv: [
+        '<rootDir>/test/harness/msw.ts',
+        '<rootDir>/test/harness/fresh-meta.ts',
+      ],
       testTimeout: 60_000,
     },
   ],

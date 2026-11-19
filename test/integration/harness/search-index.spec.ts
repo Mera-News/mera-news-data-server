@@ -330,14 +330,22 @@ describe('search indexes at boot', () => {
     await async_(admin);
     const api = await newsApi(admin);
     // The worker recorded the model its vectors are made with.
-    await api.connection
-      .db!.collection('deployment-meta')
-      .updateOne({ _id: 'embedding' as never }, { $set: { model: 'a-model' } });
+    const meta = api.connection.db!.collection('deployment-meta');
+    await meta.updateOne(
+      { _id: 'embedding' as never },
+      { $set: { model: 'a-model' } },
+    );
 
-    expect(await status(api)).toEqual({
-      vectorIndexState: 'ready',
-      textIndexState: 'ready',
-      embeddingModel: 'a-model',
-    });
+    try {
+      expect(await status(api)).toEqual({
+        vectorIndexState: 'ready',
+        textIndexState: 'ready',
+        embeddingModel: 'a-model',
+      });
+    } finally {
+      // The database is shared with every later suite on this worker, which
+      // would refuse to boot over another recorded model.
+      await meta.deleteOne({ _id: 'embedding' as never });
+    }
   });
 });
