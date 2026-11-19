@@ -178,7 +178,7 @@ Every setting:
 | `EMBEDDING_API_KEY` | no | | all | Sent as a bearer token when set. |
 | `EMBEDDING_DIMS` | no | `768` | all | The vector size your model makes. |
 | `VECTOR_MIN_SCORE` | no | `0.78` | worker, news API | Lowest score a topic match may have, above 0 and at most 1. |
-| `TRANSLATION_PROVIDER` | no | `gemini` | worker | `gemini`, `routed`, `none` or `fake` (tests only). |
+| `TRANSLATION_PROVIDER` | no | `gemini` | worker | `gemini` or `none`. (`routed` is an advanced mode not covered here; `fake` is for tests.) |
 | `GEMINI_API_KEY` | with `gemini` | | worker | Your Gemini key. |
 | `NEWS_API_OPEN` | no | `false` | news API | `true` answers without a key. |
 | `NEWS_API_HOST` | no | all addresses | news API | The address the news API listens on. |
@@ -202,8 +202,9 @@ npm run selfhost:check
 ```
 
 It reads your settings, connects to MongoDB and Redis, looks at the search indexes and the
-embedding model your database was built with, and prints one line for each thing that is wrong,
-with what to do. It ends with `all good` when there is nothing to fix.
+embedding model your database was built with, and prints one line for each, with what to fix.
+It ends with `all good` when there is nothing to fix, and exits 1 if any line starts with
+`problem`. It changes nothing.
 
 ## 10. Add your sources
 
