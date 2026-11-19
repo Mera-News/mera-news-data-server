@@ -91,6 +91,17 @@ type ArticlesForTopicsByIdsResponse {
   resetAt: String
 }
 
+"""One node of the seeded canonical category tree."""
+type CanonicalTopic {
+  id: ID!
+  label: String!
+  level: Int!
+
+  """Null while only the first level is seeded."""
+  parentId: ID
+  path: String!
+}
+
 type CanonicalTopicFacet {
   count: Int!
   topicId: ID!
@@ -466,6 +477,11 @@ type Query {
   """
   articlesForStories(articleIds: [ID!]!): ArticlesForTopicsByIdsResponse!
   articlesForTopicsByIds(articleIds: [ID!]!): ArticlesForTopicsByIdsResponse!
+
+  """
+  The seeded canonical category tree, optionally one level. Empty until the tree is seeded.
+  """
+  canonicalTopics(level: Int): [CanonicalTopic!]!
 
   """
   Cluster memberships for up to 500 article ids, from the newest complete clustering generation. An article with no links returns clusters: []; one whose links are all mid-swap is omitted. Response order is not request order.

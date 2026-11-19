@@ -131,6 +131,10 @@ export {
   WorldHeadlinesResponse,
 } from './world-headlines/world-headlines.dto';
 
+// The canonical category tree
+export { CanonicalTopicsService } from './canonical-topics/canonical-topics.service';
+export { CanonicalTopic } from './canonical-topics/canonical-topic.dto';
+
 // News search
 export {
   NewsSearchService,

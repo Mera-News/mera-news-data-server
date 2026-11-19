@@ -12,9 +12,7 @@
  * If a document below no longer matches the sender's, every check built on it
  * is stale. Re-copy it and read the diff.
  *
- * Only documents that validate against this schema are listed. The ones that
- * need fields this API does not serve (canonical topics) are left out on
- * purpose.
+ * Only documents that validate against this schema are listed.
  */
 export const CLIENT_DOCUMENTS: Record<string, string> = {
   AllCountries: `
@@ -312,6 +310,18 @@ query GetArticleIdsForPersona($query: PersonaQueryInput!) {
         maxClusterSize
 
       }
+    }
+  }
+`,
+
+  GetCanonicalTopics: `
+  query GetCanonicalTopics($level: Int) {
+    canonicalTopics(level: $level) {
+      id
+      path
+      label
+      level
+      parentId
     }
   }
 `,

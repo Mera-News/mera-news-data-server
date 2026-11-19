@@ -4,6 +4,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { MeraModelsModule } from '@mera/models';
 import { DEFAULT_JOB_OPTIONS } from '@mera/shared';
 import { LoadRssModule } from './commands/load-rss/load-rss.module';
+import { SeedCanonicalTopicsModule } from './commands/seed-canonical-topics/seed-canonical-topics.module';
 import { SeedPlacesModule } from './commands/seed-places/seed-places.module';
 import { StatusModule } from './commands/status/status.module';
 import { TopicScoresModule } from './commands/topic-scores/topic-scores.module';
@@ -26,6 +27,7 @@ import { TopicScoresModule } from './commands/topic-scores/topic-scores.module';
     }),
     MeraModelsModule,
     LoadRssModule,
+    SeedCanonicalTopicsModule,
     SeedPlacesModule,
     StatusModule,
     TopicScoresModule,

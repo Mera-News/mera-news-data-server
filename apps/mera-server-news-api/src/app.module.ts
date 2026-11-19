@@ -20,6 +20,7 @@ import {
 import { ModelsNewsModule } from '@mera/models/models/models-news.module';
 import {
   ARTICLE_QUOTA,
+  CanonicalTopicsService,
   EmbeddingProviderModule,
   MeraNewsCoreModule,
   NewsSearchService,
@@ -40,6 +41,7 @@ import {
   InternalNewsResolver,
 } from './modules/internal-news.resolver';
 import { newsApiOpen, openRateLimit } from './open-mode';
+import { CanonicalTopicsResolver } from './modules/canonical-topics.resolver';
 import { NewsClusterArticlesResolver } from './modules/news-cluster-articles.resolver';
 import { NewsSearchResolver } from './modules/news-search.resolver';
 import { WorldHeadlinesResolver } from './modules/world-headlines.resolver';
@@ -229,6 +231,8 @@ const DEFAULT_CACHE_TTL_MS = 3_600_000;
     NewsSearchService,
     PublicationProfileService,
     ServerStatusService,
+    CanonicalTopicsResolver,
+    CanonicalTopicsService,
     // Global, so a new resolver is protected by default rather than by
     // remembering to decorate it. Opt out with `@SkipApiKey()`.
     // Open mode is for one reader's own install: one shared principal, so

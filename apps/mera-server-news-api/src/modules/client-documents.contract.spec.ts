@@ -12,6 +12,7 @@ import {
 import { NewsClusterArticlesResolver } from './news-cluster-articles.resolver';
 import { NewsSearchResolver } from './news-search.resolver';
 import { WorldHeadlinesResolver } from './world-headlines.resolver';
+import { CanonicalTopicsResolver } from './canonical-topics.resolver';
 import { PublicSourceResolver } from '@mera/news-core/source-url/source-url.resolvers';
 import { CLIENT_DOCUMENTS } from './client-documents';
 
@@ -35,6 +36,7 @@ const EXPECTED_OPERATIONS = [
   'GetArticlesForStoriesLegacy',
   'GetArticlesForTopicsByIds',
   'GetArticlesForTopicsByIdsLegacy',
+  'GetCanonicalTopics',
   'GetNewsClusterForArticle',
   'GetNewsPublishers',
   'GetRecentArticleCount',
@@ -72,6 +74,7 @@ describe('client and app news documents against the news API schema', () => {
           NewsClusterArticlesResolver,
           WorldHeadlinesResolver,
           NewsSearchResolver,
+          CanonicalTopicsResolver,
         ]);
     } finally {
       await app.close();
