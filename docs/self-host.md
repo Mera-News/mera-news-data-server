@@ -7,8 +7,10 @@ works on a laptop and on a cloud machine: the steps are the same.
 The server reads feeds that publishers publish. It does not crawl websites, does not summarise
 articles, and keeps no reader accounts.
 
-Every command below is meant to be copied as it is, into one terminal opened at the root of the
-repository, unless a block starts with `# in a new terminal`.
+Every command below is meant to be copied as it is. The guide keeps the code in
+`~/mera-news-data-server`. Run each block in one terminal opened in that folder, unless the block
+starts with `# in a new terminal`: those need a second terminal, and they start by going to that
+folder, because the services read their settings from the folder they start in.
 
 ## Fastest path on a laptop
 
@@ -16,7 +18,8 @@ If you only want to try it, take these choices and follow the steps in order:
 
 - MongoDB: a free Atlas cluster (step 5).
 - Redis: one Docker container (step 6).
-- Embeddings: a local model with Ollama, so no key is needed (step 4).
+- Embeddings: a local model with Ollama, so no key is needed (step 4). This route is checked
+  against a stand-in that speaks Ollama's API, not against Ollama itself yet.
 - Translation: none, so articles stay in their own language (step 7).
 - News API: open, without a key, listening on 127.0.0.1 only (step 11).
 
@@ -34,16 +37,17 @@ If you only want to try it, take these choices and follow the steps in order:
 
 - Node.js 24 and npm.
 - git.
-- A MongoDB Atlas account. The free tier is enough to try it.
+- A MongoDB Atlas account (cloud.mongodb.com). The free tier is enough to try it.
 - Redis 7. Docker is the quickest way to run it on a laptop.
-- Either a Jina API key, or any server that offers the OpenAI embeddings API, such as Ollama on your own machine.
-- Optional: a Gemini API key, if you want articles translated to English.
+- Either a Jina API key (jina.ai), or any server that offers the OpenAI embeddings API, such as
+  Ollama on your own machine.
+- Optional: a Gemini API key (Google AI Studio), if you want articles translated to English.
 
 ## 3. Get the code
 
 ```sh
-git clone https://github.com/Mera-News/mera-news-data-server.git
-cd mera-news-data-server
+git clone https://github.com/Mera-News/mera-news-data-server.git ~/mera-news-data-server
+cd ~/mera-news-data-server
 npm ci
 npm run build:async
 npm run build:news-api
@@ -58,11 +62,11 @@ changing your mind later means starting over (see [Change model or start over](#
 
 - **Jina, with your own key** (`EMBEDDING_PROVIDER=jina`). This is the model the server's scores
   are tuned on. Answers carry a relevance score, near copies of the same article from different
-  publishers are grouped, and the score floor needs no tuning.
+  publishers are grouped, and the score floor (the lowest score a match may have) needs no tuning.
 - **Any OpenAI-compatible embeddings server** (`EMBEDDING_PROVIDER=openai-compatible`), including
   a local model with Ollama. Nothing leaves your machine for embeddings. Answers carry no
   relevance score, near copies are not grouped, and you pick the score floor yourself (step 12).
-  Jina reached through this setting counts as not tuned too.
+  Jina used through this setting is treated as untuned too.
 
 For the local model, install Ollama from its website and pull the model:
 
@@ -80,11 +84,13 @@ says. Another model needs its own size there.
 
 1. Create a cluster in MongoDB Atlas. The free tier works for a first try.
 2. Under Database Access, create a database user with the `readWrite` role on the database you
-   will use, for example `mera-news`.
-3. Under Network Access, allow the address of the machine that runs the server.
-4. Copy the connection string, and put your database name after the host:
-   `mongodb+srv://USER:PASSWORD@cluster0.example.mongodb.net/mera-news`. A connection string
-   without a database name does not work.
+   will use, for example `mera-news`. Give it a password of letters and digits only: other
+   characters break the connection string, or the shell in step 12.
+3. Under Network Access, use Add current IP address. A laptop's address changes with its
+   network: add it again when you move.
+4. Under Connect, then Drivers, copy the connection string, and put your database name after the
+   host: `mongodb+srv://USER:PASSWORD@cluster0.example.mongodb.net/mera-news`. A connection
+   string without a database name does not work.
 
 The worker creates the two search indexes it needs (a vector index and a text index on
 `news-article`) the first time it starts. They take a few minutes to build. `/health/ready` and
@@ -103,7 +109,7 @@ The server never drops or changes an index.
 Any Redis 7 works. It must not evict keys, because the job queues live there:
 
 ```sh
-docker run -d --name news-redis -p 127.0.0.1:6379:6379 redis:7.2-alpine redis-server --maxmemory-policy noeviction
+docker run -d --restart unless-stopped --name news-redis -p 127.0.0.1:6379:6379 redis:7.2-alpine redis-server --maxmemory-policy noeviction
 ```
 
 If you run Redis another way, set `maxmemory-policy noeviction` in its configuration.
@@ -112,13 +118,21 @@ If you run Redis another way, set `maxmemory-policy noeviction` in its configura
 
 - `TRANSLATION_PROVIDER=none` keeps every article in its own language. Nothing is sent anywhere
   for translation.
-- `TRANSLATION_PROVIDER=gemini` translates non-English titles and descriptions to English with
-  Gemini. Set `GEMINI_API_KEY`.
+- `TRANSLATION_PROVIDER=gemini` translates titles and descriptions it cannot confirm are English
+  to English with Gemini. Set `GEMINI_API_KEY`.
 
 ## 8. Your settings
 
-Put your settings in a file named `.env` at the root of the repository. Every part of the server
-reads it. Start from this block, saved as `.env`:
+Your settings live in a file named `.env` at the root of the repository. Every part of the
+server reads it. Start from the example:
+
+```sh
+cp .env.example .env
+openssl rand -hex 32
+```
+
+Open `.env` in an editor, put your connection string in `MONGODB_URI`, and paste the long value
+`openssl` printed into `MERA_SERVER_ASYNC_API_KEY`. The file reads:
 
 ```dotenv
 # MongoDB Atlas: the connection string with your database name after the host.
@@ -128,7 +142,10 @@ MONGODB_URI=mongodb+srv://USER:PASSWORD@cluster0.example.mongodb.net/mera-news
 REDIS_URL=redis://127.0.0.1:6379
 
 # The key that /invoke requires. Make one with: openssl rand -hex 32
-MERA_SERVER_ASYNC_API_KEY=replace-with-a-long-random-value
+MERA_SERVER_ASYNC_API_KEY=
+
+# The worker listens on this machine only.
+ASYNC_HOST=127.0.0.1
 
 # Embeddings: a local model through Ollama's OpenAI-compatible API.
 EMBEDDING_PROVIDER=openai-compatible
@@ -164,14 +181,16 @@ Do not set `PORT` in this file: both services read it, and they would then try t
 port. The worker listens on `ASYNC_PORT` (default 8080) and the news API on `NEWS_API_PORT`
 (default 3002).
 
-Every setting:
+The settings this guide uses:
 
 | Setting | Needed | Default | Read by | What it does |
 |---|---|---|---|---|
 | `MONGODB_URI` | yes | | all | Connection string, with the database name. |
 | `REDIS_URL` | yes | | worker | Redis for the job queues and the cache. |
-| `MERA_SERVER_ASYNC_API_KEY` | yes | | worker | The key `/invoke` requires. |
-| `EMBEDDING_PROVIDER` | no | `jina` | all | `jina`, `openai-compatible` or `fake` (tests only). |
+| `MERA_SERVER_ASYNC_API_KEY` | yes | | worker | The key `/invoke` requires; without it every `/invoke` call is refused. |
+| `ASYNC_HOST` | no | all addresses | worker | The address the worker listens on. |
+| `ASYNC_PORT` | no | `8080` | worker | The worker's port. |
+| `EMBEDDING_PROVIDER` | no | `jina` | all | `jina` or `openai-compatible` (`fake` is for tests). |
 | `JINA_API_KEY` | with `jina` | | all | Your Jina key. |
 | `EMBEDDING_BASE_URL` | with `openai-compatible` | | all | The server's base URL, ending before `/embeddings`. |
 | `EMBEDDING_MODEL` | with `openai-compatible` | | all | The model name the server knows. |
@@ -182,18 +201,19 @@ Every setting:
 | `GEMINI_API_KEY` | with `gemini` | | worker | Your Gemini key. |
 | `NEWS_API_OPEN` | no | `false` | news API | `true` answers without a key. |
 | `NEWS_API_HOST` | no | all addresses | news API | The address the news API listens on. |
+| `NEWS_API_PORT` | no | `3002` | news API | The news API's port. |
 | `NEWS_API_OPEN_RATE_LIMIT` | no | `60` | news API | Requests a minute per address in open mode. |
-| `MERA_NEWS_API_KEY` | unless open | | news API | The key callers send as `x-api-key`. |
+| `MERA_NEWS_API_KEY` | unless open | | news API | The key callers send as `x-api-key`. Without it, and without open mode, the news API does not start. |
 | `LOCAL_SCHEDULES` | no | `false` | worker | `true` runs the hourly jobs inside the worker. |
 | `SEARCH_INDEX_CREATE` | no | `true` | worker | `false` never creates a search index. |
 | `FEED_FETCH_ALLOW_HOSTS` | no | | worker, scripts | Private hosts the fetcher may reach (step 10). |
 | `FEED_FETCH_USER_AGENT` | no | `mera-news-data-server (self-hosted)` | worker | The User-Agent of every feed fetch. |
 | `PROXY_URLS` | no | | worker | Comma-separated proxies for feed fetches. |
-| `ASYNC_PORT` | no | `8080` | worker | The worker's port. |
-| `NEWS_API_PORT` | no | `3002` | news API | The news API's port. |
 | `LOG_LEVEL` | no | `info` | all | `debug`, `info`, `warn` or `error`. |
 | `NODE_ENV` | no | | all | `production` for a real run. |
 | `SEARCH_CACHE_SECRET` | no | random | news API | Keys the search cache; set it so restarts keep the cache. |
+
+There are more settings for tuning; their names and defaults are in the code where each is read.
 
 ## 9. Check your setup
 
@@ -204,7 +224,7 @@ npm run selfhost:check
 It reads your settings, connects to MongoDB and Redis, looks at the search indexes and the
 embedding model your database was built with, and prints one line for each, with what to fix.
 It ends with `all good` when there is nothing to fix, and exits 1 if any line starts with
-`problem`. It changes nothing.
+`problem`. It changes nothing, and it does not call your embedding or translation provider.
 
 ## 10. Add your sources
 
@@ -233,7 +253,7 @@ A feed file lists publishers by country (three-letter country code), each with o
 }
 ```
 
-Save yours as `my-feeds.json` and load it:
+Save yours as `my-feeds.json` in the repository folder and load it:
 
 ```sh
 npm run load-rss -- --file my-feeds.json
@@ -262,51 +282,64 @@ The worker:
 
 ```sh
 # in a new terminal
+cd ~/mera-news-data-server
 node dist/apps/mera-server-async/main.js
 ```
 
-Wait until it is ready:
+Wait until it is ready (stop with Ctrl+C if nothing answers after a few minutes, and read the
+worker's output):
 
 ```sh
-curl --retry 60 --retry-all-errors --retry-delay 2 -fsS http://127.0.0.1:8080/health/ready
+until curl -fsS http://127.0.0.1:8080/health/ready; do sleep 2; done
 ```
 
 The news API:
 
 ```sh
 # in a new terminal
+cd ~/mera-news-data-server
 node dist/apps/mera-server-news-api/main.js
 ```
 
 ```sh
-curl --retry 60 --retry-all-errors --retry-delay 2 -fsS http://127.0.0.1:3002/health/ready
+until curl -fsS http://127.0.0.1:3002/health/ready; do sleep 2; done
 ```
-
-A refused request still gets HTTP status 200, with the reason in the GraphQL error's
-`extensions.code`: `UNAUTHENTICATED` for a missing or wrong key, and `TOO_MANY_REQUESTS` over the
-open-mode limit, with `retryAfterSeconds` and a `Retry-After` header.
 
 With `NEWS_API_OPEN=true` the news API answers anyone who can reach it, without a key. Keep it on
 127.0.0.1, or put a proxy with its own limits in front of it: anyone who reaches it can spend
 your embeddings quota. With a key instead, callers send it as the `x-api-key` header.
 
-On a cloud machine the steps are the same. The worker needs CPU all the time, so choose an
-instance that is not throttled when idle, and run both services under a process manager. A
-systemd unit for the worker:
+A refused request still gets HTTP status 200, with the reason in the GraphQL error's
+`extensions.code`: `UNAUTHENTICATED` for a missing or wrong key, and `TOO_MANY_REQUESTS` over the
+open-mode limit, with `retryAfterSeconds` and a `Retry-After` header.
+
+On a cloud machine the steps are the same, with three more things:
+
+- Keep the worker's port closed to the internet. `ASYNC_HOST=127.0.0.1` keeps it on the machine;
+  if you unset it, close port 8080 in the firewall. Only the news API's port is meant to be
+  reachable, and only if you want it to be, with a key.
+- The worker needs CPU all the time, so choose an instance that is not throttled when idle.
+- Run both services under a process manager. With systemd, one unit per service. For the worker
+  (check where Node is with `which node`, and put your own user name in `User=`):
 
 ```ini
 [Unit]
 Description=News data server worker
+Wants=network-online.target
 After=network-online.target
 
 [Service]
-WorkingDirectory=/opt/mera-news-data-server
+User=news
+WorkingDirectory=/home/news/mera-news-data-server
 ExecStart=/usr/bin/node dist/apps/mera-server-async/main.js
 Restart=always
 
 [Install]
 WantedBy=multi-user.target
 ```
+
+Make a second unit the same way for `dist/apps/mera-server-news-api/main.js`, then start both
+with `sudo systemctl enable --now` and the unit names.
 
 ## 12. Fetch now, and pick your score floor
 
@@ -320,20 +353,30 @@ curl -fsS -X POST http://127.0.0.1:8080/invoke -H "x-api-key: $MERA_SERVER_ASYNC
 Wait until articles are embedded:
 
 ```sh
-until npm run --silent status -- --check embedded; do sleep 10; done
+until node dist/apps/mera-scripts/main.js status --check embedded; do sleep 10; done
 ```
 
-Ask for a topic:
+It ends as soon as the first articles are embedded; the rest follow over the next minutes, so a
+first answer may be short. If it has not finished after ten minutes, stop it with Ctrl+C. `npm run status` shows stored
+against embedded articles, and the worker's output names the embedding error: often the embedding
+server is not running, the model was not pulled, or the key is wrong.
+
+Ask for a topic. Use a topic your feeds cover, in place of electric buses:
 
 ```sh
 curl -fsS http://127.0.0.1:3002/graphql -H "content-type: application/json" -d '{"query": "{ articleIdsForPersona(query: { topics: [{ text: \"electric buses\" }], limitPerTopic: 5 }) { topicResults { topicText articleIds } } }"}'
 ```
 
+A good answer lists article ids for the topic:
+`{"data":{"articleIdsForPersona":{"topicResults":[{"topicText":"electric buses","articleIds":["..."]}]}}}`.
+An error coded `INDEX_NOT_READY` means the vector index is still building (see
+[Index building](#index-building)): wait a few minutes and ask again.
+
 With Jina you are done. With any other model, see how your model scores a topic that should
 match and one that should not:
 
 ```sh
-npm run topic-scores -- "electric buses" "qwxz plorb"
+node dist/apps/mera-scripts/main.js topic-scores "electric buses" "qwxz plorb"
 ```
 
 Set `VECTOR_MIN_SCORE` in `.env` between the two, then restart both services.
@@ -345,8 +388,8 @@ Set `VECTOR_MIN_SCORE` in `.env` between the two, then restart both services.
 | `news-sync-fanout` | every hour at :00 | Fetches every feed that is due, then translates and embeds what arrives. |
 | clustering (step 14) | every hour at :10 | Groups articles into stories. |
 | `link-all-topics-to-clusters` | every hour at :20 | Links topics to stories, then builds the headline editions. |
-| `data-retention-sweep` | every hour at :00, with `{"skipOrphans": true}` | Deletes what has passed its time (see step 17). |
-| `data-retention-sweep` | every day at 03:15 | The full sweep. |
+| `data-retention-sweep` | every hour at :00, with `{"skipOrphans": true}` | Deletes data older than the keep times in step 17. The hourly run skips the slower clean-up of leftover links. |
+| `data-retention-sweep` | every day at 03:15, in the worker machine's time zone | The full sweep. |
 
 Choose one way to run them, never both:
 
@@ -355,23 +398,30 @@ Choose one way to run them, never both:
   and `{"skipOrphans": true}` as `data` for the hourly sweep.
 
 To stop schedules a worker left behind after you switch to cron, start the worker once with
-`LOCAL_SCHEDULES=false`: it removes them. Clustering always needs its own scheduler line.
+`LOCAL_SCHEDULES=false`: it removes them. Clustering always needs its own scheduler line, for
+example this crontab line:
+
+```
+10 * * * * cd ~/mera-news-clustering && set -a && . ~/mera-news-data-server/.env && set +a && make run-cpu
+```
 
 ## 14. Optional: group articles into stories
 
-The clustering job is a separate project, `mera-news-clustering`.
+The clustering job is a separate project, `mera-news-clustering`. Without it the server still
+fetches, embeds and answers topic queries, but `relatedArticles` and `newsClusterForArticle`
+answer nothing, and every headline stands alone.
 
 > Available once that repository is public.
 
 ```sh
-git clone https://github.com/Mera-News/mera-news-clustering.git ../mera-news-clustering
-cd ../mera-news-clustering
+git clone https://github.com/Mera-News/mera-news-clustering.git ~/mera-news-clustering
+cd ~/mera-news-clustering
 make setup
-set -a && . ../mera-news-data-server/.env && set +a
+set -a && . ~/mera-news-data-server/.env && set +a
 make run-cpu
-cd ../mera-news-data-server
+cd ~/mera-news-data-server
 curl -fsS -X POST http://127.0.0.1:8080/invoke -H "x-api-key: $MERA_SERVER_ASYNC_API_KEY" -H "content-type: application/json" -d '{"queue_name": "link-all-topics-to-clusters"}'
-until npm run --silent status -- --check linked; do sleep 10; done
+until node dist/apps/mera-scripts/main.js status --check linked; do sleep 10; done
 ```
 
 It needs Python 3.14 and no GPU. Run it every hour at :10, after the fetch.
@@ -380,7 +430,8 @@ It needs Python 3.14 and no GPU. Run it every hour at :10, after the fetch.
 
 Place search (`placeSearch`) reads place names you load yourself from GeoNames. Download
 `cities15000.zip` and, for region names, `admin1CodesASCII.txt` from
-https://download.geonames.org/export/dump/, unzip the first, and run:
+https://download.geonames.org/export/dump/, put both at the root of the repository, unzip the
+first, and run:
 
 ```sh
 npm run seed-places -- --file cities15000.txt --admin1-file admin1CodesASCII.txt
@@ -430,27 +481,48 @@ Other queries: `relatedArticles` and `newsClusterForArticle` for an article's st
 
 ## 17. What is stored, and what leaves your machine
 
-Stored in your MongoDB database:
+Stored in your MongoDB Atlas database, which runs on MongoDB's servers:
 - Articles, for 48 hours.
 - Story clusters, for 48 hours.
-- Article fingerprints (an address seen before), for 90 days, so an article is not stored twice.
-- Topics you asked about, as anonymous shared rows, for 14 days after the last request. No reader
-  accounts, and no request log with topics.
+- Article fingerprints (a record of each article address already seen), for 90 days, so an
+  article is not stored twice.
+- Topics callers asked about, as anonymous shared rows, for 14 days after the last request.
+- Your feed list, its fetch history for 14 days, headline editions, the place and category
+  tables you load, and a record of the embedding model your vectors were made with.
+- No reader accounts, and no request log with topics.
 
 Leaves your machine:
-- Feed fetches, to the publishers you listed.
-- Embedding calls, to the embeddings provider you chose (none, with a local model).
-- Translation calls, to the translation provider you chose (none, with `none`).
-- Nothing else: there is no telemetry.
+- Everything listed above, to MongoDB Atlas, which hosts your database.
+- Feed fetches, to the publishers you listed and to any address their feeds redirect to. Each
+  one shows your server's IP address and your `FEED_FETCH_USER_AGENT`, contact included. With
+  `PROXY_URLS`, they go through your proxy provider, which sees every feed address.
+- Article titles and descriptions, and the text of every topic a caller asks about, to the
+  embeddings provider you chose (nothing, with a local model).
+- Titles and descriptions to translate, to the translation provider you chose (nothing, with
+  `none`).
+- The server itself sends no telemetry.
 
 ## 18. Keep it running
 
-- `/health/ready` shows MongoDB, Redis and both search indexes. An index state never takes the
-  service down, so do not point a startup probe at it.
+- The worker's `/health/ready` shows MongoDB, Redis and both search indexes; the news API's shows
+  MongoDB and both search indexes. A search index that is not ready never makes `/health/ready`
+  fail, so a probe on it does not wait for the index.
 - `npm run status` shows how far the pipeline has got.
-- To update: `git pull`, `npm ci`, the three builds, then restart both services. If the vector
-  index then reads `outdated`, the new release needs a field the old index lacks: drop it and
-  let the worker create it again ([Index outdated](#index-outdated)).
+- To update, run these in a new terminal (one where step 12 loaded `NODE_ENV=production` would
+  skip the build tools):
+
+```
+cd ~/mera-news-data-server
+git pull
+npm ci
+npm run build:async
+npm run build:news-api
+npm run build:scripts
+```
+
+  Then restart both services. If the vector index then reads `outdated`, the new release needs a
+  field the old index lacks: drop it and let the worker create it again
+  ([Index outdated](#index-outdated)).
 - To stop: stop both services; your data stays in MongoDB.
 
 ## 19. Sizing
@@ -464,7 +536,7 @@ memory while a fetch runs.
 
 Each search index state below shows in `/health/ready` and `newsServerStatus`, with the same
 words as here. Topic queries answer `INDEX_NOT_READY`, naming the state, while the vector index
-cannot serve; search answers from whichever half still works.
+cannot serve; search answers by meaning alone or by words alone, whichever index works.
 
 ### Index missing
 
@@ -492,7 +564,8 @@ hand.
 
 ### Index dims mismatch
 
-The vector index holds vectors of another size than `EMBEDDING_DIMS`. See the next section.
+The vector index holds vectors of another size than `EMBEDDING_DIMS`. See
+[Change model or start over](#change-model-or-start-over).
 
 ### Index unreadable
 
@@ -509,7 +582,8 @@ name in `MONGODB_URI`), and load your feeds again.
 ### Refused source
 
 A feed's address is private or local (step 10). If it is yours, add its host and port to
-`FEED_FETCH_ALLOW_HOSTS` and restart the worker; a refused feed is tried again on its own later.
+`FEED_FETCH_ALLOW_HOSTS` and restart the worker. The feed is tried again at its next scheduled
+fetch, or within a day if it was refused three times in a row and switched off.
 
 ### Local schedules
 
@@ -524,7 +598,8 @@ Clustering still needs its own scheduler line.
 
 ### Create the indexes by hand
 
-In `mongosh`, connected to your database, at 768 dimensions (use your `EMBEDDING_DIMS`):
+In `mongosh` connected to your database (or in the Atlas UI: Search and Vector Search, Create
+index, JSON editor), at 768 dimensions (use your `EMBEDDING_DIMS`):
 
 ```javascript
 db['news-article'].createSearchIndex({
