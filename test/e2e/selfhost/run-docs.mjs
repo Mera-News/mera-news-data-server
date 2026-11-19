@@ -18,8 +18,8 @@ import { fileURLToPath } from 'node:url';
 
 /**
  * Follows the self-hosting guide: every `sh` block runs, in order, exactly as
- * written. The runner changes three settings, skips five commands that name
- * what the machine already has, and never edits the guide. A command it does
+ * written. The runner changes three settings, skips the commands in SKIP
+ * (what the machine already has, or what reaches past the fixtures), and never edits the guide. A command it does
  * not recognise runs and fails, which is how a guide that has drifted shows.
  *
  *   node test/e2e/selfhost/run-docs.mjs docs/self-host.md [--lint | --dry-run]
@@ -55,6 +55,14 @@ const SKIP = [
   [
     'npm run seed-places -- --file cities15000.txt --admin1-file admin1CodesASCII.txt',
     'needs a GeoNames download',
+  ],
+  [
+    'curl -fsSL -o feeds.json https://raw.githubusercontent.com/Mera-News/mera-news-rss-feeds/master/active-feeds-auto-generated.json',
+    'the run reads the fixture feeds only, never the public list',
+  ],
+  [
+    'npm run load-rss -- --file feeds.json',
+    'the public list is not downloaded',
   ],
 ].map(([text, reason]) => ({ text, reason }));
 

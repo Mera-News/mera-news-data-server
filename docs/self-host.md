@@ -21,7 +21,8 @@ If you only want to try it, take these choices and follow the steps in order:
 - Embeddings: a local model with Ollama, so no key is needed (step 4). This route is checked
   against a stand-in that speaks Ollama's API, not against Ollama itself yet.
 - Translation: none, so articles stay in their own language (step 7).
-- News API: open, without a key, listening on 127.0.0.1 only (step 11).
+- News API: open, without a key, listening on 127.0.0.1 only (step 11). To run a pod on it
+  later, use a key instead: a pod needs search, which is not offered without one (step 21).
 
 ## 1. What runs
 
@@ -81,6 +82,8 @@ says. Another model needs its own size there.
 > not against Ollama itself.
 
 ## 5. MongoDB Atlas
+
+Other MongoDB setups are not documented here and are up to you.
 
 1. Create a cluster in MongoDB Atlas. The free tier works for a first try.
 2. Under Database Access, create a database user with the `readWrite` role on the database you
@@ -261,8 +264,26 @@ npm run load-rss -- --file my-feeds.json
 
 Running it again is safe: feeds are matched by address. To load only part of a file, add
 `--only` once or more: a feed address, `country:GBR`, `language:en` (also matches `en-GB`), or
-`all`. The repository also carries a large list of public feeds, which `npm run load-rss` loads
-with no `--file`.
+`all`.
+
+Loading never removes a feed. To remove the feeds that are no longer in your file, add
+`--sync-delete`. It deletes every feed missing from the file, your own included, so use it only
+with a file that lists every feed you want. Without it, the command only logs what it would
+delete.
+
+The repository also carries a large list of public feeds from the
+[mera-news-rss-feeds](https://github.com/Mera-News/mera-news-rss-feeds) repository. Load one
+feed of it, a few, or all of it: `npm run load-rss -- --only <feed address>` loads one feed,
+`--only country:GBR` loads one country, and `npm run load-rss` with no `--file` and no `--only`
+loads all of it.
+
+The copy in this repository can be older than that repository's list. To load the current list,
+download it to its own file, so `git pull` never conflicts with it, and load that file:
+
+```sh
+curl -fsSL -o feeds.json https://raw.githubusercontent.com/Mera-News/mera-news-rss-feeds/master/active-feeds-auto-generated.json
+npm run load-rss -- --file feeds.json
+```
 
 The fetcher refuses any feed address that is private or local: loopback, your local network,
 link-local and cloud metadata addresses, and names that resolve to them. If one of your own
@@ -632,3 +653,21 @@ db['news-article'].aggregate([{ $listSearchIndexes: {} }]);
 
 These are the definitions the worker creates, from
 `libs/mera-models/src/search-index/retrieval-index.ts`.
+
+## 21. Next: run a pod on the same computer
+
+A pod keeps your news profile on your own computer, reads this server on a schedule and keeps
+the stories that matter to you, for your own AI tools to use. Its guide is
+[Running your own pod](https://github.com/Mera-News/mera-news-pod/blob/dev/docs/self-hosting.md).
+
+A pod needs search, which the news API offers only with a key. Before you start the pod, set
+these in your `.env` in place of the open-mode lines, then restart the news API (step 11):
+
+```dotenv
+NEWS_API_OPEN=false
+MERA_NEWS_API_KEY=
+```
+
+Put the output of `openssl rand -hex 32` after `MERA_NEWS_API_KEY=`. Give the pod the same
+value as `dataApiKey` in its `secrets.json`, and this server's address, `http://127.0.0.1:3002`,
+as `dataServer.url` in its `pod.json`.
