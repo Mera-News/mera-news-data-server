@@ -18,6 +18,8 @@ const L1_PATHS = categoryTreeNodes().filter((p) =>
 ).length;
 
 describe('seed-canonical-topics command', () => {
+  // Each run embeds the whole category tree with the hashing fake.
+  jest.setTimeout(60_000);
   let app: INestApplicationContext;
   let connection: Connection;
   let db: string;
