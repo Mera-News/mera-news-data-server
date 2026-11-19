@@ -86,7 +86,14 @@ describe('ingest end to end', () => {
       [join(repo, 'dist/apps/mera-server-async/main.js')],
       {
         cwd: repo,
-        env: { ...process.env, PORT: String(appPort), NODE_ENV: 'production' },
+        env: {
+          ...process.env,
+          PORT: String(appPort),
+          NODE_ENV: 'production',
+          // The fixture feeds are on loopback, which the fetcher refuses
+          // unless the operator lists that exact host and port.
+          FEED_FETCH_ALLOW_HOSTS: `127.0.0.1:${feedPort}`,
+        },
       },
     );
     app.stdout?.on('data', (d) => (appLog += d));
