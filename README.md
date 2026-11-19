@@ -55,7 +55,7 @@ Grouping articles into stories is done by a separate clustering job that is not 
 
 ## Who can call the news API
 
-Every request needs an `x-api-key` header that matches `MERA_NEWS_API_KEY`. Unless open mode is on, the API refuses every query until that variable is set. `/health` needs no key.
+Every request needs an `x-api-key` header that matches `MERA_NEWS_API_KEY`, and the news API refuses to start without that variable unless open mode is on. `/health` needs no key.
 
 `NEWS_API_OPEN=true` serves requests without a key. It is meant for one person's own install. Each address may then make `NEWS_API_OPEN_RATE_LIMIT` requests a minute (default 60).
 

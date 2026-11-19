@@ -1,26 +1,16 @@
-import { ValidationPipe } from '@nestjs/common';
-import { BullRegistrar, getQueueToken } from '@nestjs/bullmq';
-import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { getModelToken } from '@nestjs/mongoose';
-import { Test } from '@nestjs/testing';
-import { createCache } from 'cache-manager';
 import type { Model } from 'mongoose';
-import { ArticleCacheService, QueueName } from '@mera/shared';
+import { QueueName } from '@mera/shared';
 import { NewsArticle } from '@mera/models/models/news-article.model';
 import { NewsPublisher } from '@mera/models/models/news-publisher.model';
 import { PublicationSource } from '@mera/models/models/publication-source.model';
-import { MeraServerAsyncModule } from '../../../../apps/mera-server-async/src/async.module';
 import { LoadRSSFeedProcessor } from '../../../../apps/mera-server-async/src/modules/sync-news/processor-load-rss-feed/load-rss-feed.processor';
 import { NewsSyncFanoutProcessor } from '../../../../apps/mera-server-async/src/modules/sync-news/processor-news-sync-fanout/news-sync-fanout.processor';
 import {
   SOURCE_CONNECTOR,
   type SourceConnector,
 } from '../../../../apps/mera-server-async/src/modules/shared-utilities/source-connector/source-connector.port';
-import {
-  QueueRecorder,
-  fakeJob,
-  memoryRedisClient,
-} from '../../../harness/boot';
+import { bootAsyncApp, fakeJob } from '../../../harness/boot';
 
 describe('source connector', () => {
   it('fetches every source through the bound connector, not the feed fetcher', async () => {
@@ -49,28 +39,11 @@ describe('source connector', () => {
       },
     };
 
-    const queues = Object.fromEntries(
-      Object.values(QueueName).map((n) => [n, new QueueRecorder(n)]),
-    ) as Record<QueueName, QueueRecorder>;
-    let builder = Test.createTestingModule({ imports: [MeraServerAsyncModule] })
-      .overrideProvider(BullRegistrar)
-      .useValue({ onModuleInit: () => undefined })
-      .overrideProvider(CACHE_MANAGER)
-      .useValue(createCache())
-      .overrideProvider(ArticleCacheService)
-      .useValue(new ArticleCacheService({ ttlMs: 60_000 }, memoryRedisClient()))
-      .overrideProvider(SOURCE_CONNECTOR)
-      .useValue(connector);
-    for (const n of Object.values(QueueName)) {
-      builder = builder.overrideProvider(getQueueToken(n)).useValue(queues[n]);
-    }
-    const app = (await builder.compile()).createNestApplication({
-      logger: false,
+    const h = await bootAsyncApp({
+      overrides: (builder) =>
+        builder.overrideProvider(SOURCE_CONNECTOR).useValue(connector),
     });
-    app.useGlobalPipes(
-      new ValidationPipe({ transform: true, whitelist: true }),
-    );
-    await app.init();
+    const { app, queues } = h;
 
     try {
       const model = <T>(name: string) =>
@@ -110,7 +83,8 @@ describe('source connector', () => {
         'https://connector.example.test/story-1',
       ]);
     } finally {
-      await app.close();
+      // Awaits the story-key chain before closing.
+      await h.close();
     }
   });
 });

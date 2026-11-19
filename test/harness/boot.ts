@@ -1,5 +1,5 @@
 import { INestApplication, Type, ValidationPipe } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
+import { Test, type TestingModuleBuilder } from '@nestjs/testing';
 import { BullRegistrar, getQueueToken } from '@nestjs/bullmq';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { getConnectionToken } from '@nestjs/mongoose';
@@ -151,6 +151,7 @@ export async function bootAsyncApp({
   module = MeraServerAsyncModule,
   processors = {},
   searchIndexAdmin = new InMemorySearchIndexAdmin(),
+  overrides,
 }: {
   /** The root Nest module to boot. */
   module?: Type<unknown>;
@@ -158,6 +159,8 @@ export async function bootAsyncApp({
   processors?: typeof PROCESSORS;
   /** Stands in for the cluster's search index commands, which the in-memory database rejects. */
   searchIndexAdmin?: InMemorySearchIndexAdmin;
+  /** More provider overrides, applied after the harness's own, e.g. `SOURCE_CONNECTOR`. */
+  overrides?: (builder: TestingModuleBuilder) => TestingModuleBuilder;
 } = {}): Promise<Harness> {
   const queues = Object.fromEntries(
     Object.values(QueueName).map((name) => [name, new QueueRecorder(name)]),
@@ -176,6 +179,8 @@ export async function bootAsyncApp({
   for (const name of Object.values(QueueName)) {
     builder = builder.overrideProvider(getQueueToken(name)).useValue(queues[name]);
   }
+
+  if (overrides) builder = overrides(builder);
 
   const moduleRef = await builder.compile();
   const app = moduleRef.createNestApplication({ logger: false });

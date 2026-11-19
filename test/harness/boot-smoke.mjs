@@ -99,4 +99,61 @@ for (const service of SERVICES) {
   }
 }
 
+// Phase 3: the built news API in open mode answers without a key. It needs a
+// reachable database to start (the open-mode warning prints after Mongo
+// connects), so this one case runs against an in-memory mongod.
+if (SERVICES.includes('mera-server-news-api') && !failed) {
+  const { MongoMemoryServer } = await import('mongodb-memory-server');
+  const { createServer } = await import('node:net');
+  const mongo = await MongoMemoryServer.create({ binary: { version: '8.2.6' } });
+  const port = await new Promise((done) => {
+    const probe = createServer().listen(0, '127.0.0.1', () => {
+      const { port: free } = probe.address();
+      probe.close(() => done(free));
+    });
+  });
+  let out = '';
+  const child = spawn(process.execPath, [join(repo, 'dist/apps/mera-server-news-api/main.js')], {
+    cwd,
+    env: {
+      ...env,
+      MONGODB_URI: mongo.getUri('boot-smoke'),
+      NEWS_API_OPEN: 'true',
+      MERA_NEWS_API_KEY: '',
+      NEWS_API_HOST: '127.0.0.1',
+      PORT: String(port),
+      EMBEDDING_PROVIDER: 'fake',
+      ALLOW_FAKE_PROVIDERS: 'true',
+    },
+  });
+  child.stdout.on('data', (d) => (out += d));
+  child.stderr.on('data', (d) => (out += d));
+  let answer;
+  for (let i = 0; i < 60 && !answer; i++) {
+    await new Promise((r) => setTimeout(r, 500));
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/graphql`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ query: '{ allCountries }' }),
+      });
+      answer = { status: res.status, body: await res.json() };
+    } catch {
+      // not listening yet
+    }
+  }
+  child.kill('SIGKILL');
+  await mongo.stop();
+  const warnings = out.split('NEWS_API_OPEN=true: the news API answers without a key').length - 1;
+  const refused = JSON.stringify(answer?.body ?? {}).includes('UNAUTHENTICATED');
+  if (!answer || answer.status !== 200 || refused || warnings !== 1) {
+    failed = true;
+    console.log(
+      `mera-server-news-api open mode: FAILED (answer ${answer ? answer.status : 'none'}, refused ${refused}, warnings ${warnings})`,
+    );
+  } else {
+    console.log('mera-server-news-api open mode: ok (answers without a key, warned once)');
+  }
+}
+
 process.exit(failed ? 1 : 0);
