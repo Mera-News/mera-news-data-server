@@ -156,4 +156,77 @@ if (SERVICES.includes('mera-server-news-api') && !failed) {
   }
 }
 
+// Phase 4: the built worker takes its settings from the .env in the folder it
+// starts in (nothing in its environment), and ASYNC_HOST=127.0.0.1 keeps it off
+// every other address.
+if (SERVICES.includes('mera-server-async') && !failed) {
+  const { MongoMemoryServer } = await import('mongodb-memory-server');
+  const { createServer, connect } = await import('node:net');
+  const { networkInterfaces } = await import('node:os');
+  const { writeFileSync, mkdtempSync: mkdtemp } = await import('node:fs');
+  const mongo = await MongoMemoryServer.create({ binary: { version: '8.2.6' } });
+  const port = await new Promise((done) => {
+    const probe = createServer().listen(0, '127.0.0.1', () => {
+      const { port: free } = probe.address();
+      probe.close(() => done(free));
+    });
+  });
+  const home = mkdtemp(join(tmpdir(), 'boot-smoke-env-'));
+  writeFileSync(
+    join(home, '.env'),
+    [
+      `MONGODB_URI=${mongo.getUri('boot-smoke')}`,
+      'REDIS_URL=redis://127.0.0.1:9',
+      'MERA_SERVER_ASYNC_API_KEY=boot-smoke',
+      'ASYNC_HOST=127.0.0.1',
+      `ASYNC_PORT=${port}`,
+      'EMBEDDING_PROVIDER=fake',
+      'TRANSLATION_PROVIDER=fake',
+      'ALLOW_FAKE_PROVIDERS=true',
+      'NODE_ENV=production',
+    ].join('\n'),
+  );
+  let out = '';
+  const child = spawn(process.execPath, [join(repo, 'dist/apps/mera-server-async/main.js')], {
+    cwd: home,
+    env: { PATH: process.env.PATH },
+  });
+  child.stdout.on('data', (d) => (out += d));
+  child.stderr.on('data', (d) => (out += d));
+  let status;
+  for (let i = 0; i < 60 && !status; i++) {
+    await new Promise((r) => setTimeout(r, 500));
+    try {
+      status = (await fetch(`http://127.0.0.1:${port}/health`)).status;
+    } catch {
+      // not listening yet
+    }
+  }
+  const outside = Object.values(networkInterfaces())
+    .flat()
+    .find((a) => a && a.family === 'IPv4' && !a.internal)?.address;
+  const reachedOutside = outside
+    ? await new Promise((done) => {
+        const socket = connect({ host: outside, port }, () => {
+          socket.destroy();
+          done(true);
+        });
+        socket.on('error', () => done(false));
+      })
+    : false;
+  child.kill('SIGKILL');
+  await mongo.stop();
+  if (status !== 200 || reachedOutside) {
+    failed = true;
+    console.log(
+      `mera-server-async root .env and ASYNC_HOST: FAILED (health ${status ?? 'none'}, reachable on ${outside}: ${reachedOutside})`,
+    );
+    console.log(out.split('\n').slice(-5).join('\n'));
+  } else {
+    console.log(
+      `mera-server-async root .env and ASYNC_HOST: ok (settings from ./.env only; 127.0.0.1 answers${outside ? `, ${outside} refused` : ''})`,
+    );
+  }
+}
+
 process.exit(failed ? 1 : 0);

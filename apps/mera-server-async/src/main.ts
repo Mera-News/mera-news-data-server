@@ -7,6 +7,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Logger } from 'nestjs-pino';
 import { HttpExceptionFilter } from '@mera/shared';
+import { readText } from '@mera/shared/config/env-choice';
 import { MeraServerAsyncModule } from './async.module';
 
 async function bootstrap() {
@@ -60,7 +61,9 @@ async function bootstrap() {
     configService.get<number>('PORT') ??
     configService.get<number>('ASYNC_PORT', 8080);
 
-  await app.listen(port);
+  // Unset listens on every address; 127.0.0.1 keeps /invoke on the machine.
+  const host = readText(configService, 'ASYNC_HOST');
+  await (host ? app.listen(port, host) : app.listen(port));
   logger.log(`Async service is running on port ${port}`);
 }
 
