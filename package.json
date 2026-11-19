@@ -11,6 +11,7 @@
     "scripts": "nest start mera-scripts --",
     "load-rss": "nest start mera-scripts -- load-rss",
     "status": "nest start mera-scripts -- status",
+    "selfhost:check": "nest start mera-scripts -- selfhost:check",
     "seed-canonical-topics": "nest start mera-scripts -- seed-canonical-topics",
     "seed-places": "nest start mera-scripts -- seed-places",
     "topic-scores": "nest start mera-scripts -- topic-scores",

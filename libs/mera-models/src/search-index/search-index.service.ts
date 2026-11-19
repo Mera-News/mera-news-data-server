@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { readBool } from '@mera/shared/config/env-choice';
+import { readBool, type ConfigReader } from '@mera/shared/config/env-choice';
 import { embeddingDims } from '@mera/shared/embedding-provider/embedding-config';
 import type {
   IndexState,
@@ -63,7 +63,8 @@ export class SearchIndexService implements SearchIndexState, OnModuleInit {
   constructor(
     @Inject(SEARCH_INDEX_ADMIN) private readonly admin: SearchIndexAdmin,
     @Inject(SEARCH_INDEX_OPTIONS) private readonly options: SearchIndexOptions,
-    config: ConfigService,
+    // Only `get` is read, so any config reader serves (the setup check passes one).
+    @Inject(ConfigService) config: ConfigReader,
   ) {
     this.dims = embeddingDims(config);
     this.creationOn = readBool(config, 'SEARCH_INDEX_CREATE', true);
