@@ -19,7 +19,10 @@ export type FeedFetchCategory =
   | 'network'
   | 'parse_error'
   | 'empty_response'
-  | 'empty_feed';
+  | 'empty_feed'
+  // The address is not one the fetcher may connect to. Only the operator's
+  // FEED_FETCH_ALLOW_HOSTS can change that.
+  | 'refused';
 
 export class FeedFetchError extends Error {
   constructor(

@@ -22,12 +22,23 @@ import {
   isProxyInfraStatus,
   type ProxyInfraFault,
 } from '@mera/shared/resilience/proxy-egress-breaker';
-// ONE definition, shared with the audit tool's separate fetcher. See the file
-// header: two literals would drift silently and only surface as a publisher
-// complaint about traffic that does not match their allowlist.
-import { CRAWLER_USER_AGENT } from '@mera/shared/url/crawler-identity';
+import {
+  allowlistedAgents,
+  assertPublicUrl,
+  effectivePort,
+  feedFetchUserAgent,
+  findEgressRefusal,
+  isAllowedHost,
+  parseAllowHosts,
+  strictAgents,
+  type AllowList,
+  type EgressAgents,
+} from '@mera/shared/url/public-egress';
 
 const DEFAULT_PROXY_FETCH_RETRIES = 2;
+
+/** Largest response or request body any fetch accepts. */
+const MAX_BODY_BYTES = 20 * 1024 * 1024;
 
 /**
  * Per-attempt axios timeout. A knob rather than a literal so it can be cut
@@ -164,6 +175,11 @@ export class AxiosService {
   private readonly logger = new Logger(AxiosService.name);
   private readonly axiosProxyInstances: AxiosInstance[] = [];
   private readonly directInstance: AxiosInstance;
+  /** Hosts and ports the operator allows to be private (`FEED_FETCH_ALLOW_HOSTS`). */
+  private readonly allowList: AllowList;
+  /** Built once. Only a listed source ever gets these; every other source gets the strict pair. */
+  private readonly allowedAgents: EgressAgents;
+  private readonly userAgent: string;
   private readonly proxyFetchRetries: number;
   /** Per-attempt axios timeout (ms), from `PROXY_FETCH_TIMEOUT_MS`. */
   private readonly fetchTimeoutMs: number;
@@ -223,6 +239,15 @@ export class AxiosService {
   private readonly countryRoundRobinIndex = new Map<string, number>();
 
   constructor(private configService: ConfigService) {
+    this.allowList = parseAllowHosts(configService);
+    this.allowedAgents = allowlistedAgents(this.allowList);
+    this.userAgent = feedFetchUserAgent(configService);
+    if (this.allowList.length > 0) {
+      this.logger.log(
+        `Feed fetches may reach private addresses at: ${this.allowList.map((e) => `${e.host} (ports ${e.ports.join(', ')})`).join('; ')}`,
+      );
+    }
+
     // Resolved BEFORE any instance is built — createAxiosInstance() reads it.
     this.fetchTimeoutMs = this.readPositiveInt(
       'PROXY_FETCH_TIMEOUT_MS',
@@ -397,7 +422,19 @@ export class AxiosService {
     const timeout = this.fetchTimeoutMs;
 
     const defaultHeaders = {
-      'User-Agent': CRAWLER_USER_AGENT,
+      'User-Agent': this.userAgent,
+    };
+    const limits = {
+      timeout,
+      headers: defaultHeaders,
+      // feeds behind redirect chains exceed axios's default of 5
+      maxRedirects: 10,
+      // HTTP_PROXY and HTTPS_PROXY are ignored: PROXY_URLS is the only proxy.
+      proxy: false as const,
+      maxContentLength: MAX_BODY_BYTES,
+      maxBodyLength: MAX_BODY_BYTES,
+      // Plain http, including every http redirect hop, never leaves through the pool.
+      httpAgent: strictAgents.http,
     };
 
     if (proxyUrl) {
@@ -412,11 +449,8 @@ export class AxiosService {
       });
 
       const axiosInstance = axios.create({
+        ...limits,
         httpsAgent: proxyAgent,
-        timeout,
-        headers: defaultHeaders,
-        // feeds behind redirect chains exceed axios's default of 5
-        maxRedirects: 10,
       });
 
       axiosInstance.interceptors.response.use(
@@ -445,11 +479,58 @@ export class AxiosService {
       return axiosInstance;
     }
 
-    return axios.create({
-      timeout,
-      headers: defaultHeaders,
-      maxRedirects: 10,
-    });
+    return axios.create({ ...limits, httpsAgent: strictAgents.https });
+  }
+
+  /** Whether the request's own address is one the operator listed. */
+  private isListed(url: string | undefined): boolean {
+    try {
+      const parsed = new URL(url ?? '');
+      return isAllowedHost(
+        this.allowList,
+        parsed.hostname,
+        effectivePort(parsed),
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * One attempt's request config: its own deadline, a redirect check wrapped
+   * around the caller's hook, and the agents that fit the source. A listed
+   * source gets the allowlisted agents; every other source keeps the strict
+   * ones, so its redirect into a listed private host is still refused at the
+   * socket.
+   */
+  private guarded(
+    config: AxiosRequestConfig,
+    listed: boolean,
+  ): AxiosRequestConfig {
+    const callerHook = config.beforeRedirect;
+    return {
+      ...config,
+      // Wall-clock limit for this attempt, body included: the axios `timeout`
+      // and the redirect timer both stop once the response headers arrive, so
+      // only an abort signal bounds a source that drips its body. Twice the
+      // per-attempt timeout (60 s at the default 30 s). Fresh per attempt.
+      signal: config.signal ?? AbortSignal.timeout(this.fetchTimeoutMs * 2),
+      ...(listed
+        ? {
+            httpAgent: this.allowedAgents.http,
+            httpsAgent: this.allowedAgents.https,
+          }
+        : {}),
+      beforeRedirect: (options, details, request) => {
+        callerHook?.(options, details, request);
+        const host = String(options.hostname ?? '');
+        const port = options.port ? `:${String(options.port)}` : '';
+        assertPublicUrl(
+          `${String(options.protocol)}//${host.includes(':') ? `[${host}]` : host}${port}/`,
+          listed ? this.allowList : [],
+        );
+      },
+    };
   }
 
   /**
@@ -465,6 +546,15 @@ export class AxiosService {
     countryCode?: string,
     opts: ProxyCallOptions = {},
   ): Promise<AxiosResponse<T>> {
+    assertPublicUrl(config.url ?? '', this.allowList);
+    if (this.isListed(config.url)) {
+      // A listed source is on the operator's own network, which no proxy pool
+      // can reach.
+      const response = await this.callWithoutProxy<T>(config);
+      opts.onVia?.('direct');
+      return response;
+    }
+
     const gate = this.claimEgress();
     if (gate === 'shed') {
       // The pool is known bad. Writing nothing at all is the point: the caller
@@ -614,6 +704,10 @@ export class AxiosService {
         opts.onVia?.('direct');
         return response;
       } catch (directError) {
+        // A refusal is about the address, not the proxy, so it is the answer.
+        if (findEgressRefusal(directError)) {
+          throw directError;
+        }
         this.jobLogger.info('direct_fetch_used', {
           outcome: 'failure',
           status: (directError as ProxyRequestError)?.response?.status ?? null,
@@ -649,6 +743,7 @@ export class AxiosService {
     config: AxiosRequestConfig,
     countryCode?: string,
   ): Promise<AxiosResponse<T>> {
+    // A refusal passes through the breaker uncounted: isEgressFault rejects it.
     const dispatch = () => this.dispatchViaPool<T>(config, countryCode);
     return this.egressBreaker
       ? this.egressBreaker.execute(dispatch)
@@ -694,7 +789,7 @@ export class AxiosService {
       const isLastAttempt = attempt === maxAttempts;
 
       try {
-        const response = await instance.request<T>(config);
+        const response = await instance.request<T>(this.guarded(config, false));
 
         // A caller may pass a permissive `validateStatus`, in which case a
         // retryable status resolves instead of rejecting. Spend the retry
@@ -776,7 +871,7 @@ export class AxiosService {
       }
 
       try {
-        const response = await instance.request<T>(config);
+        const response = await instance.request<T>(this.guarded(config, false));
 
         // Permissive `validateStatus` at the call site would otherwise resolve
         // a retryable status and silently skip the remaining attempts.
@@ -808,6 +903,11 @@ export class AxiosService {
         // degrade-on-first-failure path below. Worth one wasted request per
         // geo-targeted feed per quota cycle; it is not a mechanism change.
         if (lastError.meraInfraFault) {
+          throw lastError;
+        }
+
+        // Another pool would be refused for the same address.
+        if (findEgressRefusal(lastError)) {
           throw lastError;
         }
 
@@ -912,6 +1012,11 @@ export class AxiosService {
    * retried since a different egress IP wouldn't change the outcome.
    */
   private isRetryableProxyError(error: ProxyRequestError): boolean {
+    // Another egress or a retry would be refused for the same address.
+    if (findEgressRefusal(error)) {
+      return false;
+    }
+
     const status = error.response?.status;
 
     if (status === undefined) {
@@ -1039,6 +1144,9 @@ export class AxiosService {
   async callWithoutProxy<T = any>(
     config: AxiosRequestConfig,
   ): Promise<AxiosResponse<T>> {
-    return this.directInstance.request<T>(config);
+    assertPublicUrl(config.url ?? '', this.allowList);
+    return this.directInstance.request<T>(
+      this.guarded(config, this.isListed(config.url)),
+    );
   }
 }

@@ -158,6 +158,47 @@ describe('feed address in logs and stored articles', () => {
     }
   });
 
+  it('keeps credentials and tokens out of everything about a refused feed', async () => {
+    const hits: string[] = [];
+    server.use(
+      http.get('http://169.254.169.254/feed', ({ request }) => {
+        hits.push(request.url);
+        return HttpResponse.text(rss(''));
+      }),
+    );
+    const refused = await addFeed(
+      `http://${USER_MARKER}:${PASS_MARKER}@169.254.169.254/feed?token=${QUERY_MARKER}`,
+      'Refused Feed',
+    );
+
+    const capture = captureLogs();
+    try {
+      await load(refused._id, true);
+    } finally {
+      capture.restore();
+    }
+
+    expect(hits).toEqual([]);
+    // Positive control: the refusal was logged and stored, so the markers
+    // were absent from real lines and rows.
+    expect(
+      capture.lines.some((l) => l.includes('Failed to fetch RSS feed Refused')),
+    ).toBe(true);
+    const feedAfter = await sources.findById(refused._id).lean();
+    expect(feedAfter).toMatchObject({ last_fetch_status: 'refused' });
+    // The feed's own row keeps the address it is fetched with; every other
+    // collection (fetch history, state machines) must not hold a marker.
+    const elsewhere: string[] = [feedAfter!.last_fetch_error ?? ''];
+    for (const collection of await h.connection.db!.collections()) {
+      if (collection.collectionName === 'publication-source') continue;
+      elsewhere.push(JSON.stringify(await collection.find().toArray()));
+    }
+    for (const marker of [QUERY_MARKER, USER_MARKER, PASS_MARKER]) {
+      expect(capture.lines.filter((l) => l.includes(marker))).toEqual([]);
+      expect(elsewhere.filter((s) => s.includes(marker))).toEqual([]);
+    }
+  });
+
   it('logs a fixed placeholder for a malformed address', async () => {
     const broken = await addFeed(`not a url ${QUERY_MARKER}`, 'Broken Feed');
     const capture = captureLogs();

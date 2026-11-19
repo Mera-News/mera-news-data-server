@@ -904,6 +904,11 @@ export class LoadRSSFeedService {
         );
       }
 
+      // Never re-attempted, whatever FEED_FETCH_JOB_ATTEMPTS is: the answer
+      // cannot change until the operator lists the host.
+      if (category === 'refused') {
+        throw new UnrecoverableError(errorMessage);
+      }
       throw error;
     }
 

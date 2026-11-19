@@ -48,6 +48,12 @@ describe('classifyFeedFailure', () => {
     },
   );
 
+  // A refused address changes only when the operator lists it, so waiting out a
+  // backoff cannot help.
+  it('classifies a refused address as permanent', () => {
+    expect(classifyFeedFailure({ category: 'refused' })).toBe('permanent');
+  });
+
   it('classifies an item-less feed as benign — a quiet publisher is not broken', () => {
     expect(classifyFeedFailure({ category: 'empty_feed' })).toBe('benign');
   });

@@ -50,6 +50,23 @@ export class EgressRefusedError extends Error {
   }
 }
 
+/**
+ * The refusal behind an error, if there is one. An HTTP client wraps the
+ * errors its sockets and redirect hooks raise, so the refusal can sit several
+ * causes down.
+ */
+export function findEgressRefusal(error: unknown): Error | undefined {
+  let current: unknown = error;
+  // Bounded so a cyclic cause chain cannot loop forever.
+  for (let depth = 0; depth < 10 && current instanceof Error; depth++) {
+    if ((current as Error & { code?: string }).code === 'EGRESS_REFUSED') {
+      return current;
+    }
+    current = current.cause;
+  }
+  return undefined;
+}
+
 const blocked = new BlockList();
 for (const [network, prefix] of [
   ['0.0.0.0', 8],

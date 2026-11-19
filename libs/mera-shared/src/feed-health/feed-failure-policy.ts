@@ -123,6 +123,11 @@ export function classifyFeedFailure(input: {
     return 'benign';
   }
 
+  // The address will be refused again until the operator lists it.
+  if (category === 'refused') {
+    return 'permanent';
+  }
+
   // 'timeout' | 'network' | 'parse_error' | 'empty_response' | unknown.
   return 'transient';
 }

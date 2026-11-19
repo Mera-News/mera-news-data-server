@@ -4,6 +4,7 @@ import {
   SamplingBreaker,
   CircuitBreakerPolicy,
 } from 'cockatiel';
+import { findEgressRefusal } from '../url/public-egress';
 
 /**
  * Pool-wide circuit breaker for the outbound RSS-fetch proxy pool.
@@ -149,6 +150,12 @@ export function isEgressFault(error: unknown): boolean {
   // Never let the breaker feed on its own rejection: that is a self-sustaining
   // open circuit which would never recover.
   if (error instanceof ProxyEgressUnavailableError) {
+    return false;
+  }
+
+  // A refused address is about the source, not the pool: it has no response
+  // either, but must never count toward opening the circuit.
+  if (findEgressRefusal(error)) {
     return false;
   }
 

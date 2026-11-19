@@ -8,6 +8,7 @@ import {
   scrubUrlsInText,
 } from '@mera/shared/url/strip-url-secrets';
 import { AxiosService } from '../axios/axios.service';
+import { findEgressRefusal } from '@mera/shared/url/public-egress';
 import { FeedFetchError } from './feed-fetch-error';
 
 /**
@@ -224,6 +225,12 @@ export class RSSFeedService {
           response?: { status: number; statusText: string };
         };
 
+        // Before the socket-error branches: axios wraps the refusal in them.
+        const refusal = findEgressRefusal(fetchError);
+        if (refusal) {
+          throw new FeedFetchError('refused', refusal.message);
+        }
+
         if (error.code === 'ECONNRESET') {
           throw new FeedFetchError(
             'network',
@@ -231,7 +238,9 @@ export class RSSFeedService {
           );
         } else if (
           error.code === 'ETIMEDOUT' ||
-          error.code === 'ECONNABORTED'
+          error.code === 'ECONNABORTED' ||
+          // The attempt's deadline fired.
+          error.code === 'ERR_CANCELED'
         ) {
           throw new FeedFetchError(
             'timeout',

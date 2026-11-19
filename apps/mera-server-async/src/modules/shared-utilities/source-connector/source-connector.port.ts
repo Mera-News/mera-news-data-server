@@ -1,6 +1,8 @@
 import type { PublicationSource } from '@mera/models/models/publication-source.model';
 import type { RSSFeedService } from '../rss-feed/rss-feed.service';
 
+// Every adapter fetches through AxiosService's guarded instances: they are what
+// refuses private addresses, caps response sizes and bounds each attempt.
 // One connector per kind of source. RSS is the only one today; a second kind
 // is one adapter and one binding.
 export const SOURCE_CONNECTOR = 'SOURCE_CONNECTOR';

@@ -1,10 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { PublicationSource } from '@mera/models/models/publication-source.model';
 import { NewsPublisher } from '@mera/models/models/news-publisher.model';
 import * as fs from 'fs';
 import * as path from 'path';
+import {
+  assertPublicUrl,
+  parseAllowHosts,
+} from '@mera/shared/url/public-egress';
 import { CountryCodeMapper } from './country-code-mapper';
 import {
   coercePublicationCategories,
@@ -101,6 +106,7 @@ export class NewsFeedListOfCountriesService {
     private publicationSourceModel: Model<PublicationSource>,
     @InjectModel(NewsPublisher.name)
     private newsPublisherModel: Model<NewsPublisher>,
+    private readonly configService: ConfigService,
   ) {}
 
   /**
@@ -173,6 +179,22 @@ export class NewsFeedListOfCountriesService {
           );
         }
       }
+
+      // The feed is loaded either way; the fetch refuses it. This only tells
+      // the operator now rather than on the first fetch cycle.
+      const allowList = parseAllowHosts(this.configService);
+      const warned = new Set<string>();
+      const warnIfRefused = (uri: string) => {
+        try {
+          assertPublicUrl(uri, allowList);
+        } catch (err) {
+          const message = (err as Error).message;
+          if (!warned.has(message)) {
+            warned.add(message);
+            this.logger.warn(message);
+          }
+        }
+      };
 
       const seedFeedUrls = new Set<string>();
       let createdCount = 0;
@@ -272,6 +294,7 @@ export class NewsFeedListOfCountriesService {
             for (const feedUri of publication.publication_rss_feed_uris) {
               if (!wanted(feedUri, countryCode)) continue;
               seedFeedUrls.add(feedUri.uri);
+              warnIfRefused(feedUri.uri);
 
               try {
                 const desiredGated = !!feedUri.gated;

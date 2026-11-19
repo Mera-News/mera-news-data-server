@@ -8,7 +8,7 @@ import {
   getModelToken,
 } from '@nestjs/mongoose';
 import { Test } from '@nestjs/testing';
-import type { INestApplicationContext } from '@nestjs/common';
+import { Logger, type INestApplicationContext } from '@nestjs/common';
 import { Connection, Model } from 'mongoose';
 import { LoadRssCommand } from '../../../../apps/mera-scripts/src/commands/load-rss/load-rss.command';
 import { LoadRssModule } from '../../../../apps/mera-scripts/src/commands/load-rss/load-rss.module';
@@ -89,7 +89,7 @@ describe('load-rss command', () => {
 
     const moduleRef = await Test.createTestingModule({
       imports: [
-        ConfigModule.forRoot({ ignoreEnvFile: true }),
+        ConfigModule.forRoot({ ignoreEnvFile: true, isGlobal: true }),
         MongooseModule.forRoot(process.env.MONGODB_URI!),
         LoadRssModule,
       ],
@@ -254,6 +254,56 @@ describe('load-rss command', () => {
       await expect(
         run({ file: 'custom-feeds.json', only: ['all'], syncDelete: true }),
       ).rejects.toThrow('--sync-delete');
+    });
+
+    describe('private feed addresses', () => {
+      const PRIVATE_SEED = {
+        GBR: [
+          {
+            publication_name: 'Back Office',
+            publication_website_uri: 'https://office.example.test',
+            publication_rss_feed_uris: [
+              { uri: 'http://169.254.169.254/latest/a.xml' },
+              { uri: 'http://169.254.169.254/latest/b.xml' },
+              { uri: 'http://10.0.0.5:8080/lan.xml' },
+              { uri: 'https://office.example.test/public.xml' },
+            ],
+          },
+        ],
+      };
+      let warnings: jest.SpyInstance;
+      beforeAll(() => {
+        writeFileSync(join(dir, 'private.json'), JSON.stringify(PRIVATE_SEED));
+      });
+      beforeEach(() => {
+        warnings = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+      });
+      afterEach(() => {
+        warnings.mockRestore();
+        delete process.env.FEED_FETCH_ALLOW_HOSTS;
+      });
+      const refusalWarnings = () =>
+        warnings.mock.calls
+          .map((c) => String(c[0]))
+          .filter((m) => m.includes('FEED_FETCH_ALLOW_HOSTS'));
+
+      it('warns once per host, with the host only, and still loads every feed', async () => {
+        await run({ file: 'private.json' });
+
+        expect(refusalWarnings().sort()).toEqual([
+          'refused: 10.0.0.5 is not a public address; add it to FEED_FETCH_ALLOW_HOSTS',
+          'refused: 169.254.169.254 is not a public address; add it to FEED_FETCH_ALLOW_HOSTS',
+        ]);
+        expect(await loaded()).toHaveLength(4);
+      });
+
+      it('stays quiet about a listed host and port', async () => {
+        process.env.FEED_FETCH_ALLOW_HOSTS = '10.0.0.5:8080,169.254.169.254:80';
+
+        await run({ file: 'private.json' });
+
+        expect(refusalWarnings()).toEqual([]);
+      });
     });
   });
 });

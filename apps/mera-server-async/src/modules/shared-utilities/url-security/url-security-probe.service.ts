@@ -35,6 +35,7 @@ import { Cache } from 'cache-manager';
 import { ConfigService } from '@nestjs/config';
 import { isInsecureUrl, httpsVariant } from '@mera/shared';
 import { UrlSecurityState } from '@mera/shared/url/url-security';
+import { scrubUrlsInText } from '@mera/shared/url/strip-url-secrets';
 
 /** The subset of a `fetch` Response the probe reads. */
 export interface ProbeResponse {
@@ -311,8 +312,9 @@ export class UrlSecurityProbeService {
       const finalUrl = response.url ?? url;
       return /^https:\/\//i.test(finalUrl);
     } catch (err) {
+      // The host only: an address can carry a credential in its path or query.
       this.logger.debug(
-        `https probe ${method} ${url} failed: ${(err as Error)?.message}`,
+        `https probe ${method} ${UrlSecurityProbeService.hostOf(url)} failed: ${scrubUrlsInText((err as Error)?.message ?? '')}`,
       );
       return false;
     } finally {
