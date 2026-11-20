@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { NewsArticleService } from '../../../../libs/mera-news-core/src/news-article/news-article.service';
 import { bootNewsApi, type NewsApi } from '../support/boot-news-api';
@@ -161,6 +162,27 @@ describe('ID fields that can receive a populated document', () => {
       ).errors;
       expect(errors?.[0].extensions?.code).toBe('INTERNAL_SERVER_ERROR');
       expect(leaks(res.body, stored)).toBe(false);
+    });
+
+    it('is still logged at ERROR with its stack', async () => {
+      const errors: unknown[][] = [];
+      Logger.overrideLogger({
+        log: () => undefined,
+        warn: () => undefined,
+        debug: () => undefined,
+        verbose: () => undefined,
+        fatal: () => undefined,
+        error: (...args: unknown[]) => errors.push(args),
+      });
+      try {
+        await failing.gql(`query($id: ID!) { articleById(id: $id) { _id } }`, {
+          id: String(new Types.ObjectId()),
+        });
+      } finally {
+        Logger.overrideLogger(false);
+      }
+      const logged = errors.flat().find((a): a is Error => a instanceof Error);
+      expect(logged?.stack).toMatch(/\n\s+at /);
     });
   });
 });

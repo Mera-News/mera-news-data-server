@@ -135,6 +135,44 @@ describe('answers while a search index is not ready', () => {
     });
   });
 
+  describe('the log line', () => {
+    let entries: { level: string; args: unknown[] }[];
+    beforeEach(() => {
+      entries = [];
+      const at =
+        (level: string) =>
+        (...args: unknown[]) =>
+          entries.push({ level, args });
+      Logger.overrideLogger({
+        log: at('log'),
+        error: at('error'),
+        warn: at('warn'),
+        debug: at('debug'),
+        verbose: at('verbose'),
+        fatal: at('fatal'),
+      });
+    });
+    const text = (args: unknown[]) =>
+      args
+        .map((a) =>
+          a instanceof Error ? `${a.message}\n${a.stack}` : String(a),
+        )
+        .join(' ');
+
+    it('is one warning without a stack for each not-ready answer', async () => {
+      plant(null, 'READY');
+      await cold();
+      await cold();
+
+      const notReady = entries.filter((e) =>
+        text(e.args).includes('not ready'),
+      );
+      expect(notReady.map((e) => e.level)).toEqual(['warn', 'warn']);
+      for (const e of notReady) expect(text(e.args)).not.toMatch(/\n\s+at /);
+      expect(entries.filter((e) => e.level === 'error')).toEqual([]);
+    });
+  });
+
   describe('search', () => {
     // So the semantic leg answers; the fake refuses `$search`, so a lexical leg
     // that runs fails and is logged as failed, which tells "ran" from "skipped".

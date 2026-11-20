@@ -4,7 +4,7 @@ import {
   type ModuleMetadata,
   type Provider,
 } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { CacheModule } from '@nestjs/cache-manager';
 import { MongooseModule } from '@nestjs/mongoose';
@@ -62,6 +62,7 @@ import {
   maxQueryDepth,
   queryLimitsRule,
 } from './query-limits';
+import { IndexNotReadyFilter } from './index-not-ready.filter';
 import { hideInternalErrorMessage } from './internal-error-message';
 
 const DEFAULT_CACHE_TTL_MS = 3_600_000;
@@ -302,6 +303,7 @@ export class NewsApiModule {
         },
         { provide: APP_GUARD, useClass: ApiKeyGuard },
         { provide: APP_GUARD, useClass: GqlThrottlerGuard },
+        { provide: APP_FILTER, useClass: IndexNotReadyFilter },
       ],
     };
   }
