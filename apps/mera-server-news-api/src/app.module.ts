@@ -62,6 +62,7 @@ import {
   maxQueryDepth,
   queryLimitsRule,
 } from './query-limits';
+import { hideInternalErrorMessage } from './internal-error-message';
 
 const DEFAULT_CACHE_TTL_MS = 3_600_000;
 
@@ -218,7 +219,8 @@ export class NewsApiModule {
             validationRules: [
               queryLimitsRule(maxQueryDepth(configService), MAX_QUERY_FIELDS),
             ],
-            formatError: keepQueryLimitCode,
+            formatError: (formatted, error) =>
+              hideInternalErrorMessage(keepQueryLimitCode(formatted, error)),
             // ApiKeyGuard reads `req` from here. Without this the guard cannot see
             // the headers on a GraphQL request and rejects everything.
             context: ({ req, res }: { req: unknown; res: unknown }) => ({

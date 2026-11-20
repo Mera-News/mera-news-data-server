@@ -3,6 +3,7 @@ import { Document, Types } from 'mongoose';
 import {
   ObjectType,
   Field,
+  FieldMiddleware,
   Float,
   ID,
   Int,
@@ -48,6 +49,17 @@ registerEnumType(ArticleProcessingStatus, {
   description: 'Status of article processing through the pipeline',
 });
 
+/**
+ * Reads that populate `publicationSource` leave the populated document in
+ * `publicationSourceId`; the ID serialiser would refuse it and print the whole
+ * document, feed address included, in its error.
+ */
+const sourceIdOnly: FieldMiddleware = async (_ctx, next) => {
+  const value: unknown = await next();
+  // An ObjectId's `_id` is itself, so an unpopulated read passes through.
+  return (value as { _id?: unknown } | null | undefined)?._id ?? value;
+};
+
 @ObjectType()
 @Schema({ collection: 'news-article', timestamps: true })
 export class NewsArticle {
@@ -83,7 +95,7 @@ export class NewsArticle {
   source_uri!: string;
 
   // Direct link to publication source (like NewsCluster)
-  @Field(() => ID)
+  @Field(() => ID, { middleware: [sourceIdOnly] })
   @Prop({
     type: Types.ObjectId,
     ref: 'PublicationSource',
