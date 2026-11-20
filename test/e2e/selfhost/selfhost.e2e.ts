@@ -5,6 +5,7 @@ import { MongoClient, type Db } from 'mongodb';
 import {
   NEWS_ARTICLE_COLLECTION,
   VECTOR_INDEX_NAME,
+  retrievalIndexDefinition,
 } from '../../../libs/mera-models/src/search-index/retrieval-index';
 
 /**
@@ -327,16 +328,26 @@ describe('the self-hosting guide, followed', () => {
         ? undefined
         : true,
     );
-    await sleep(31_000);
-    const answer = await graphql<TopicAnswer>(topicQuery, {
-      text: `tram lines in ${Date.now()}`,
-    });
-    expect(answer.errors?.[0].extensions?.code).toBe('INDEX_NOT_READY');
-    expect(answer.errors?.[0].extensions?.state).toBe('missing');
-    for (const base of [newsApi, worker]) {
-      const { status, vectorState } = await health(base);
-      expect(status).toBe(200);
-      expect(vectorState).toBe('missing');
+    try {
+      await sleep(31_000);
+      const answer = await graphql<TopicAnswer>(topicQuery, {
+        text: `tram lines in ${Date.now()}`,
+      });
+      expect(answer.errors?.[0].extensions?.code).toBe('INDEX_NOT_READY');
+      expect(answer.errors?.[0].extensions?.state).toBe('missing');
+      for (const base of [newsApi, worker]) {
+        const { status, vectorState } = await health(base);
+        expect(status).toBe(200);
+        expect(vectorState).toBe('missing');
+      }
+    } finally {
+      // The workflow runs a pod against this install next, so put the index back.
+      const { name, type, definition } = retrievalIndexDefinition(768);
+      await articles.createSearchIndex({ name, type, definition });
+      await until('the vector index to be ready again', async () => {
+        const { vectorState } = await health(newsApi);
+        return vectorState === 'ready' ? true : undefined;
+      });
     }
-  });
+  }, 600_000);
 });
