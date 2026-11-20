@@ -2,6 +2,8 @@
 
 The news data server behind Mera News, by Mera Labs B.V. It reads RSS feeds that publishers publish. It detects the language, translates, creates embeddings and stores articles in MongoDB. It serves topic-to-article retrieval and headlines over a GraphQL API. It has no user accounts and stores nothing about readers. It shows headlines and links out to the publisher. It does not summarise articles, and it is not a crawler: it reads published RSS only.
 
+Mera News, the app, runs this code inside a private service that adds accounts, subscriptions and push notifications. Those private parts are not published.
+
 ## Run your own
 
 [docs/self-host.md](docs/self-host.md) takes you from nothing to your own server, on a laptop or on a cloud machine: MongoDB Atlas, Redis, your choice of embeddings and translation, your own feeds, and the queries.
@@ -16,6 +18,10 @@ What you need:
 The quickest try: a free Atlas cluster, Redis in Docker, a local embeddings model with Ollama, no translation, and the news API open on 127.0.0.1 only. The guide walks through exactly that first.
 
 Every setting, with its default, is in the guide; [.env.example](.env.example) holds the same settings block.
+
+## What this code can and cannot prove
+
+Mera's production servers run this repository's code inside private services: the ingest code inside Mera's worker, and the retrieval code inside the app's API. Mera does not run the standalone news API from this repository. The builds are not reproducible or signed, and the deployed commit is not published, so this code alone cannot prove what Mera's servers run. To depend on none of that, run it yourself: see [Run your own](#run-your-own).
 
 ## Using the news API module in your own application
 
