@@ -38,7 +38,8 @@ If you only want to try it, take these choices and follow the steps in order:
 
 - Node.js 24 and npm.
 - git.
-- A MongoDB Atlas account (cloud.mongodb.com). The free tier is enough to try it.
+- A MongoDB Atlas account (cloud.mongodb.com). The free tier is enough to try it. MongoDB
+  Community Edition with its search process is not tested yet (step 5).
 - Redis 7. Docker is the quickest way to run it on a laptop.
 - Either a Jina API key (jina.ai), or any server that offers the OpenAI embeddings API, such as
   Ollama on your own machine.
@@ -83,7 +84,11 @@ says. Another model needs its own size there.
 
 ## 5. MongoDB Atlas
 
-Other MongoDB setups are not documented here and are up to you.
+This guide documents and tests MongoDB Atlas only. MongoDB Community Edition with its search
+process (MongoDB Server 8.3 with the search process 1.70.1 or newer, run as a replica set) can
+also run the search and vector search this server needs. Mera Labs has not tested the data server
+with it yet. You are free to try it, and a report or a pull request with what you find is welcome
+(see [CONTRIBUTING.md](../CONTRIBUTING.md)).
 
 1. Create a cluster in MongoDB Atlas. The free tier works for a first try.
 2. Under Database Access, create a database user with the `readWrite` role on the database you
