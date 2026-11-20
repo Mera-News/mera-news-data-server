@@ -13,11 +13,11 @@ import {
  * The async service talks to TWO logical Redis roles, which can live on one
  * instance or on two:
  *
- *   - BullMQ queues/flows  → `news-bullmq-redis` (noeviction).  Reached via
+ *   - BullMQ queues/flows  → a `noeviction` instance.  Reached via
  *     `REDIS_URL`, namespaced by `BULLMQ_PREFIX` (default `bull` — i.e. exactly
  *     BullMQ's own default, so this is a no-op until a deployment sets it).
  *   - Volatile TTL'd data cache (RSS-dedup fingerprints, pub-source-info) →
- *     `news-persistent-redis` (volatile-ttl).  Reached via
+ *     a `volatile-ttl` instance.  Reached via
  *     `PERSISTENT_REDIS_URL`, falling back to `REDIS_URL` when unset (no-op
  *     default), namespaced by `CACHE_KEY_PREFIX`.
  *

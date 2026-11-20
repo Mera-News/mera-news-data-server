@@ -12,7 +12,7 @@ import { createClient } from 'redis';
  * WHY A DEDICATED THIN CLIENT (not the cache-manager Keyv layer)
  * --------------------------------------------------------------
  * This service needs MGET / pipelined-SET / DEL semantics over the SAME shared
- * `news-persistent-redis` instance the fingerprint cache uses (env
+ * volatile-ttl instance the fingerprint cache uses (env
  * `PERSISTENT_REDIS_URL`, fallback `REDIS_URL`). cache-manager v7 exposes only
  * get/set/del one key at a time, so a direct node-redis client (already a repo
  * dependency) is used here. Keys are namespaced exactly like the Keyv cache

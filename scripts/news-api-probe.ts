@@ -32,7 +32,7 @@
  * Seven of the eleven documents need a real id: an article, a publisher, a
  * publication source, a country code. Hardcoding any of them pins this probe to
  * one database, and it is meant to run against a local scratch Mongo AND
- * against staging without an edit. So it walks the corpus first — countries,
+ * against a shared deployment database without an edit. So it walks the corpus first — countries,
  * then publishers, then articles — and feeds each answer into the next
  * document. A probe that cannot find a seed says so and exits non-zero rather
  * than reporting a pass on an empty corpus, which is the failure this ordering

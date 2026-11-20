@@ -17,7 +17,7 @@ export const DEFAULT_PAGE_SIZE = 20;
  */
 export const HEAVY_ARTICLE_FIELDS_EXCLUSION = {
   embedding_article_data_retrieval: 0,
-  // Prod writes the unsuffixed text-matching field; `_internal_only` covers
+  // The pipeline writes the unsuffixed text-matching field; `_internal_only` covers
   // stray v3-drift docs.
   embedding_article_data_text_matching: 0,
   embedding_article_data_text_matching_internal_only: 0,

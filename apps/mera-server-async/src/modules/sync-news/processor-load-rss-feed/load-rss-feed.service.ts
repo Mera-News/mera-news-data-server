@@ -510,8 +510,7 @@ export class LoadRSSFeedService {
    * rotation sheds ~1/32 of fetches forever while `feed_health.byStatus` stays
    * clean and `last_fetch_status` holds its last good value, and nothing in
    * the product can tell you. This is deliberately DB-level rather than a
-   * Cloud Monitoring alert, because an alert needs a terraform apply that this
-   * work does not perform.
+   * monitoring alert, so every deployment has it without a separate setup.
    *
    * The $inc is cycle-gated for the same reason `recordFetchFailure`'s is:
    * BullMQ re-attempts and stall re-deliveries re-enter here for one cycle.

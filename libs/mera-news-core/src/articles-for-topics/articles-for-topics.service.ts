@@ -151,9 +151,9 @@ const VECTOR_SEARCH_LIMIT = 100;
 //
 // It carried a "must NOT be raised" note justified by "mongot/Atlas CPU", i.e. the
 // co-located-mongot topology where search work competes with the database for the
-// primary's CPU. THIS CLUSTER HAS DEDICATED ATLAS SEARCH NODES: the data replica set
-// resolves to `mera-db-shard-00-0{0,1,2}` while the search indexes report status from
-// `mera-db-shard-00-search-*`. `$vectorSearch` executes there, so this knob spends
+// primary's CPU. On a cluster with DEDICATED ATLAS SEARCH NODES, the search indexes
+// report status from search-node hosts apart from the data replica set, and
+// `$vectorSearch` executes there, so this knob spends
 // SEARCH-NODE capacity and cannot contend with the primary. The old note no longer
 // applies and has been removed rather than softened.
 //

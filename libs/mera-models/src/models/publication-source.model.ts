@@ -325,8 +325,8 @@ export class PublicationSource {
    * "writes nothing" is right for a transient event and wrong forever: one bad
    * credential in a PROXY_URLS rotation would shed indefinitely while
    * `feed_health.byStatus` stayed clean and no counter could ever trip. This is
-   * the DB-level evidence that a shed is not transient, and it exists precisely
-   * because a Cloud Monitoring alert would need a terraform apply to ship.
+   * the DB-level evidence that a shed is not transient, kept in the database so
+   * every deployment has it without a separate monitoring setup.
    *
    * Reset to 0 by any recorded fetch outcome, success or failure.
    */

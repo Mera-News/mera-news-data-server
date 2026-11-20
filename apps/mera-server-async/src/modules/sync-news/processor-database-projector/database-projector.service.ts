@@ -366,7 +366,7 @@ export class DatabaseProjectorService {
       title_en_internal_only: entry.title_en_internal_only,
       description_en_internal_only: entry.description_en_internal_only ?? '',
       embedding_article_data_retrieval: entry.retrievalVector,
-      // Prod ground-truth field name (NO `_internal_only` suffix — that variant
+      // Canonical field name (NO `_internal_only` suffix — that variant
       // is v3 drift). Undeclared on the schema → strict:false persists it.
       // The clustering job reads this exact field.
       embedding_article_data_text_matching: entry.textMatchingVector,
