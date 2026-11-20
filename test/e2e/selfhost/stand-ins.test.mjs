@@ -67,6 +67,16 @@ test('lone items point away from every story and each other, whatever text surro
   }
 });
 
+test('every topic the pod makes from the proof fact lands on the buses story', async () => {
+  const { body } = await embed([
+    'Brightwater orders 40 electric buses for its city routes',
+    'News about live Brightwater',
+    'News about buses latest',
+  ]);
+  const [article, ...topics] = body.data.map((d) => d.embedding);
+  for (const topic of topics) assert.ok(cosine(article, topic) > 0.97);
+});
+
 test('the same text always gets the same vector', async () => {
   const a = (await embed('qwxz plorb')).body.data[0].embedding;
   const b = (await embed(['qwxz plorb'])).body.data[0].embedding;

@@ -82,6 +82,30 @@ jobs:
         env:
           SELFHOST_E2E: "true"
         run: npm run test:e2e -- --testPathPatterns selfhost
+      # Step 21 of the guide: switch the news API to a key, restart it, then run a pod against it.
+      # The pod repository is public, so it is cloned over https with no key.
+      - name: Run a pod against it
+        run: |
+          key=$(openssl rand -hex 32)
+          echo "::add-mask::$key"
+          sed -i 's/^NEWS_API_OPEN=true$/NEWS_API_OPEN=false/' .env
+          grep -qx 'NEWS_API_OPEN=false' .env
+          printf 'MERA_NEWS_API_KEY=%s\n' "$key" >> .env
+          pkill -f dist/apps/mera-server-news-api/main.js
+          while pgrep -f dist/apps/mera-server-news-api/main.js > /dev/null; do sleep 1; done
+          nohup node dist/apps/mera-server-news-api/main.js > "$SELFHOST_LOG_DIR/news-api-with-key.log" 2>&1 &
+          echo $! >> "$SELFHOST_LOG_DIR/pod.pids"
+          until curl -fsS http://127.0.0.1:3002/health/ready > /dev/null; do sleep 2; done
+          # Without the key the news API now refuses.
+          curl -fsS http://127.0.0.1:3002/graphql -H "content-type: application/json" \
+            -d '{"query": "{ topHeadlinesForCountry(countryCode: \"GBR\", first: 1) { headlines { clusterSize } } }"}' \
+            | grep -q UNAUTHENTICATED
+          git clone https://github.com/Mera-News/mera-news-pod "$RUNNER_TEMP/mera-news-pod"
+          cd "$RUNNER_TEMP/mera-news-pod"
+          npm ci
+          npm run build
+          MERA_POD_DATA_API_KEY="$key" node scripts/first-picks.mjs --data-server http://127.0.0.1:3002 \
+            --fact "I live in Brightwater and follow its new electric buses." --timeout 900
       - name: Show the logs and stop the services
         if: always()
         run: |
