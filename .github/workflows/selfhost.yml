@@ -2,8 +2,7 @@ name: Self-hosting guide
 
 # Follows docs/self-host.md in a fresh environment. It runs only when the guide,
 # its settings example, the runner or this file change, or by hand: it takes a
-# few minutes and builds two search indexes. Pushes only, so no pull request
-# from a fork ever reaches the clustering deploy key.
+# few minutes and builds two search indexes.
 on:
   push:
     paths:
@@ -16,8 +15,6 @@ on:
 jobs:
   # Follows docs/self-host.md step by step, then checks what it built.
   selfhost:
-    # The clustering deploy key is a repository secret, which Dependabot's runs do not get.
-    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     services:
@@ -52,21 +49,6 @@ jobs:
         run: |
           node --test test/e2e/selfhost/*.test.mjs
           node test/e2e/selfhost/run-docs.mjs docs/self-host.md --lint
-      # The clustering repository is private for now; the key reaches only git, through these variables.
-      - name: Clustering access
-        env:
-          CLUSTERING_DEPLOY_KEY: ${{ secrets.CLUSTERING_DEPLOY_KEY }}
-        run: |
-          umask 077
-          printf '%s\n' "$CLUSTERING_DEPLOY_KEY" > "$RUNNER_TEMP/clustering_key"
-          # GitHub's published ed25519 host key (api.github.com/meta), SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU.
-          echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > "$RUNNER_TEMP/known_hosts"
-          {
-            echo "GIT_SSH_COMMAND=ssh -i $RUNNER_TEMP/clustering_key -o IdentitiesOnly=yes -o UserKnownHostsFile=$RUNNER_TEMP/known_hosts"
-            echo "GIT_CONFIG_COUNT=1"
-            echo "GIT_CONFIG_KEY_0=url.git@github.com:Mera-News/mera-news-clustering.git.insteadOf"
-            echo "GIT_CONFIG_VALUE_0=https://github.com/Mera-News/mera-news-clustering.git"
-          } >> "$GITHUB_ENV"
       - name: Start the stand-ins
         run: |
           mkdir -p "$SELFHOST_LOG_DIR"
@@ -117,6 +99,3 @@ jobs:
           for p in $(cat "$SELFHOST_LOG_DIR"/*.pids 2>/dev/null); do
             kill -- "-$p" 2>/dev/null || kill "$p" 2>/dev/null || true
           done
-      - name: Remove the clustering key
-        if: always()
-        run: rm -f "$RUNNER_TEMP/clustering_key"
