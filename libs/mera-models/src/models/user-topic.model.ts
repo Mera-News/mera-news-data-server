@@ -91,6 +91,20 @@ export class UserTopic {
 
   @Prop({ required: false })
   place_terms_version?: number;
+
+  // A followed story's gates (`story-gates.ts` in news-core): each a kind, a
+  // text derived by an LLM from `news_topic_text` ALONE, and that text's query
+  // vector. An article must pass every gate. `[]` means no gate. Same
+  // lifecycle as `must_match`. `story_gates_version` is `STORY_GATES_VERSION`.
+  @Prop({
+    type: [{ kind: String, text: String, vector: [Number], _id: false }],
+    required: false,
+    default: undefined,
+  })
+  story_gates?: { kind: string; text: string; vector: number[] }[];
+
+  @Prop({ required: false })
+  story_gates_version?: number;
 }
 
 export const UserTopicSchema = SchemaFactory.createForClass(UserTopic);

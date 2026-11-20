@@ -33,6 +33,15 @@ export type StoryNamesOutcome =
   | { status: 'failed'; reason: string }
   | { status: 'unconfigured' };
 
+/**
+ * A followed story's gate texts: `{kind, text}` pairs, `[]` when the story
+ * has none. Same failed and unconfigured meanings as story names.
+ */
+export type StoryGatesOutcome =
+  | { status: 'ok'; gates: { kind: string; text: string }[] }
+  | { status: 'failed'; reason: string }
+  | { status: 'unconfigured' };
+
 export interface StoryNamesGenerator {
   /** Never throws. `signal` bounds the whole call. */
   generate(topicText: string, signal?: AbortSignal): Promise<StoryNamesOutcome>;
@@ -46,6 +55,14 @@ export interface StoryNamesGenerator {
     topicText: string,
     signal?: AbortSignal,
   ): Promise<StoryNamesOutcome>;
+  /**
+   * A FOLLOWED story's gate texts, from the topic text alone (for a place
+   * gate: the city, region or country the story happens in). Never throws.
+   */
+  generateStoryGates(
+    topicText: string,
+    signal?: AbortSignal,
+  ): Promise<StoryGatesOutcome>;
 }
 
 export class UnconfiguredStoryNamesGenerator implements StoryNamesGenerator {
@@ -53,6 +70,9 @@ export class UnconfiguredStoryNamesGenerator implements StoryNamesGenerator {
     return Promise.resolve({ status: 'unconfigured' });
   }
   generatePlaceTerms(): Promise<StoryNamesOutcome> {
+    return Promise.resolve({ status: 'unconfigured' });
+  }
+  generateStoryGates(): Promise<StoryGatesOutcome> {
     return Promise.resolve({ status: 'unconfigured' });
   }
 }

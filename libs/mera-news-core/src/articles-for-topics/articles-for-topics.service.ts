@@ -55,6 +55,7 @@ import {
   PLACE_TERMS_PROMPT_VERSION,
   STORY_NAMES_GENERATOR,
   STORY_NAMES_PROMPT_VERSION,
+  type StoryGatesOutcome,
   type StoryNamesGenerator,
   type StoryNamesOutcome,
 } from '@mera/shared/story-names/story-names.port';
@@ -87,6 +88,12 @@ import {
 } from './related-facets';
 import { NewsArticleService } from '../news-article/news-article.service';
 import { HEAVY_ARTICLE_FIELDS_EXCLUSION } from '../constants';
+import {
+  STORY_GATES_VERSION,
+  isStoryGateKind,
+  passesStoryGates,
+  type StoryGate,
+} from './story-gates';
 
 const CACHE_TTL_MS = 30 * 60 * 1000;
 // TTL for a topic that resolved to NOTHING (gated to nothing on the warm path, or a
@@ -229,6 +236,9 @@ type EngineTopicInput = TopicPaginationInput & { strictMatch?: boolean };
  */
 type StoryNames = { names: string[]; generated: boolean } | 'failed';
 
+/** A strict topic's gates for this request; same meanings as `StoryNames`. */
+type StoryGates = { gates: StoryGate[]; generated: boolean } | 'failed';
+
 /**
  * A loose topic's place anchor for this request: an article must name one of
  * `terms` or `regions`. `terms: []` means no filter. There is no failed state:
@@ -271,6 +281,8 @@ type StoredTopicRow = {
   place_terms?: string[];
   place_regions?: string[];
   place_terms_version?: number;
+  story_gates?: { kind: string; text: string; vector: number[] }[];
+  story_gates_version?: number;
 };
 
 /** The must-match haystack fields (coalesce, never pick title_en alone: it is almost never populated). */
@@ -325,6 +337,8 @@ interface Classification {
    * inline generation overlaps the warm link reads or the cold embed.
    */
   names: Promise<StoryNames> | null;
+  /** Strict topics only, null otherwise; started in phase 1 like `names`. */
+  gates: Promise<StoryGates> | null;
   /** Loose topics only, null otherwise; started in phase 1 like `names`. */
   places: Promise<PlaceAnchor> | null;
   entries: CachedArticleEntry[];
@@ -862,6 +876,152 @@ export class ArticlesForTopicsService {
   }
 
   /**
+   * A strict topic's gates: the row's at the current version, else generated
+   * inline (same timeout and outcomes as story names), grounded in the topic
+   * text, limited to registered kinds and embedded. Never rejects.
+   */
+  private async resolveStoryGates(
+    topicText: string,
+    row: StoredTopicRow | null,
+  ): Promise<StoryGates> {
+    if (
+      row &&
+      Array.isArray(row.story_gates) &&
+      (row.story_gates_version ?? 0) >= STORY_GATES_VERSION
+    ) {
+      return {
+        gates: row.story_gates.filter(
+          (g): g is StoryGate =>
+            isStoryGateKind(g.kind) && (g.vector?.length ?? 0) > 0,
+        ),
+        generated: false,
+      };
+    }
+    if (topicText.startsWith('cat:')) return { gates: [], generated: false };
+
+    let outcome: StoryGatesOutcome;
+    try {
+      outcome = await this.storyNames.generateStoryGates(
+        topicText,
+        AbortSignal.timeout(STORY_NAMES_TIMEOUT_MS),
+      );
+    } catch {
+      outcome = { status: 'failed', reason: 'threw' };
+    }
+    // No generator: served without gates, as with story names.
+    if (outcome.status === 'unconfigured') {
+      return { gates: [], generated: false };
+    }
+    if (outcome.status === 'failed') {
+      this.logger.warn(
+        `story-gates: generation failed (${outcome.reason}); ` +
+          'the strict topic answers [] this request',
+      );
+      return 'failed';
+    }
+
+    const wanted = outcome.gates.filter(
+      (g) =>
+        isStoryGateKind(g.kind) &&
+        groundNamesInText([g.text], topicText).length > 0,
+    );
+    if (wanted.length < outcome.gates.length) {
+      this.logger.log(
+        `story-gates: dropped ${outcome.gates.length - wanted.length} ` +
+          'unregistered or ungrounded gates',
+      );
+    }
+    if (wanted.length === 0) return { gates: [], generated: true };
+
+    let vectors: number[][];
+    try {
+      vectors = await this.embeddingProvider.embed(
+        wanted.map((g) => g.text),
+        AbortSignal.timeout(this.jinaQueryTimeoutMs),
+      );
+    } catch (err) {
+      this.logger.warn(
+        `story-gates: embedding failed (${(err as Error).message}); ` +
+          'the strict topic answers [] this request',
+      );
+      return 'failed';
+    }
+    return {
+      gates: wanted.map((g, i) => ({
+        kind: g.kind as StoryGate['kind'],
+        text: g.text,
+        vector: vectors[i],
+      })),
+      generated: true,
+    };
+  }
+
+  /** Store generated gates. Same conditions as `persistStoryNames`. */
+  private async persistStoryGates(
+    topicText: string,
+    gates: StoryGate[],
+  ): Promise<void> {
+    try {
+      await this.userTopicModel
+        .updateOne(
+          {
+            news_topic_text: topicText,
+            is_canonical: { $ne: true },
+            story_gates_version: { $not: { $gte: STORY_GATES_VERSION } },
+          },
+          {
+            $set: {
+              story_gates: gates,
+              story_gates_version: STORY_GATES_VERSION,
+            },
+          },
+        )
+        .exec();
+    } catch (err) {
+      this.logger.warn(
+        `story-gates: could not store gates (${(err as Error).message})`,
+      );
+    }
+  }
+
+  /**
+   * Keeps the articles whose retrieval vector passes every gate. The vectors
+   * are read here, by id, only for a topic that has gates; an article without
+   * one fails closed.
+   */
+  private async applyStoryGates<T>(
+    seam: 'warm' | 'cold',
+    items: T[],
+    idOf: (item: T) => Types.ObjectId,
+    gates: StoryGate[],
+  ): Promise<T[]> {
+    if (gates.length === 0 || items.length === 0) return items;
+    const rows = (await this.newsArticleModel
+      .find(
+        { _id: { $in: items.map(idOf) } },
+        { _id: 1, embedding_article_data_retrieval: 1 },
+      )
+      .lean()
+      .exec()) as unknown as Array<{
+      _id: Types.ObjectId;
+      embedding_article_data_retrieval?: number[];
+    }>;
+    const vectors = new Map(
+      rows.map((r) => [r._id.toString(), r.embedding_article_data_retrieval]),
+    );
+    const kept = items.filter((i) =>
+      passesStoryGates(gates, vectors.get(idOf(i).toString())),
+    );
+    if (kept.length < items.length) {
+      this.logger.log(
+        `story-gates (${seam}): kept=${kept.length} ` +
+          `removed=${items.length - kept.length}`,
+      );
+    }
+    return kept;
+  }
+
+  /**
    * Classify-cache key. The strict key carries the story-names prompt version,
    * so answers filtered by older names (or by nothing) are never served after
    * a bump, and its 48h window, since it answers more than the loose key. The
@@ -870,7 +1030,7 @@ export class ArticlesForTopicsService {
   private buildCacheKey(topicText: string, strict = false): string {
     const hash = createHash('sha256').update(topicText).digest('hex');
     return strict
-      ? `aft:strict:v${STORY_NAMES_PROMPT_VERSION}:w48:${hash}`
+      ? `aft:strict:v${STORY_NAMES_PROMPT_VERSION}:g${STORY_GATES_VERSION}:w48:${hash}`
       : `aft:pl${PLACE_TERMS_PROMPT_VERSION}:${hash}`;
   }
 
@@ -1033,13 +1193,17 @@ export class ArticlesForTopicsService {
         try {
           const embedding = coldEmbeddings.get(c.input.topicText);
           const names = c.names ? await c.names : null;
-          if (names === 'failed') {
+          const gates = c.gates ? await c.gates : null;
+          if (names === 'failed' || gates === 'failed') {
             c.entries = [];
           } else {
             // Phase 2 has upserted the row by now, so a first-ever topic's
-            // generated names have somewhere to land.
+            // generated names and gates have somewhere to land.
             if (names?.generated) {
               await this.persistStoryNames(c.input.topicText, names.names);
+            }
+            if (gates?.generated) {
+              await this.persistStoryGates(c.input.topicText, gates.gates);
             }
             c.entries = embedding
               ? await this.runColdVectorSearch(
@@ -1049,6 +1213,7 @@ export class ArticlesForTopicsService {
                   c.strict,
                   names?.names ?? [],
                   c.places,
+                  gates?.gates ?? [],
                 )
               : [];
           }
@@ -1431,6 +1596,7 @@ export class ArticlesForTopicsService {
         cold: false,
         strict,
         names: null,
+        gates: null,
         places: null,
         entries: cached,
       };
@@ -1442,11 +1608,12 @@ export class ArticlesForTopicsService {
         is_canonical: { $ne: true },
       })
       .select(
-        '_id must_match must_match_version place_terms place_regions place_terms_version',
+        '_id must_match must_match_version place_terms place_regions place_terms_version story_gates story_gates_version',
       )
       .lean()
       .exec()) as StoredTopicRow | null;
     const names = strict ? this.resolveStoryNames(input.topicText, row) : null;
+    const gates = strict ? this.resolveStoryGates(input.topicText, row) : null;
     const places = strict
       ? null
       : Promise.resolve(this.resolvePlaceAnchor(input.topicText, row));
@@ -1458,14 +1625,33 @@ export class ArticlesForTopicsService {
           key,
           strict,
           names,
+          gates,
           places,
         )
       : null;
     if (warm !== null) {
-      return { input, key, cold: false, strict, names, places, entries: warm };
+      return {
+        input,
+        key,
+        cold: false,
+        strict,
+        names,
+        gates,
+        places,
+        entries: warm,
+      };
     }
 
-    return { input, key, cold: true, strict, names, places, entries: [] };
+    return {
+      input,
+      key,
+      cold: true,
+      strict,
+      names,
+      gates,
+      places,
+      entries: [],
+    };
   }
 
   /**
@@ -1481,6 +1667,7 @@ export class ArticlesForTopicsService {
     key: string,
     strict: boolean,
     names: Promise<StoryNames> | null,
+    gates: Promise<StoryGates> | null,
     places: Promise<PlaceAnchor> | null,
   ): Promise<CachedArticleEntry[] | null> {
     const cutoffDate = cutoffFor(strict);
@@ -1533,6 +1720,19 @@ export class ArticlesForTopicsService {
         allLinkedArticles,
         articleMatchText,
         resolved.names,
+      );
+    }
+    if (gates) {
+      const resolved = await gates;
+      if (resolved === 'failed') return [];
+      if (resolved.generated) {
+        await this.persistStoryGates(topicText, resolved.gates);
+      }
+      linkedArticles = await this.applyStoryGates(
+        'warm',
+        linkedArticles,
+        (a) => a._id,
+        resolved.gates,
       );
     }
     linkedArticles = await this.applyPlaceAnchor(
@@ -1765,6 +1965,7 @@ export class ArticlesForTopicsService {
     strict: boolean,
     names: string[],
     places: Promise<PlaceAnchor> | null = null,
+    gates: StoryGate[] = [],
   ): Promise<CachedArticleEntry[]> {
     const cutoffDate = cutoffFor(strict);
 
@@ -1810,12 +2011,17 @@ export class ArticlesForTopicsService {
     const rawResults = await this.applyPlaceAnchor(
       'cold',
       topicText,
-      this.applyStoryNames(
+      await this.applyStoryGates(
         'cold',
-        topicText,
-        rawResultsAll,
-        coldMatchText,
-        names,
+        this.applyStoryNames(
+          'cold',
+          topicText,
+          rawResultsAll,
+          coldMatchText,
+          names,
+        ),
+        (r) => r._id as Types.ObjectId,
+        gates,
       ),
       coldMatchText,
       places,
