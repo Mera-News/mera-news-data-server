@@ -13,7 +13,16 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "devDependencies": {
+    "@types/he": "1.2.3",
     "@types/node": "24.19.2",
+    "esbuild": "0.28.2",
     "typescript": "7.0.2"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "4.3.2",
+    "cld3-asm": "4.0.0",
+    "he": "2.0.0",
+    "rss-parser": "3.13.0",
+    "string-strip-html": "13.7.7"
   }
 }

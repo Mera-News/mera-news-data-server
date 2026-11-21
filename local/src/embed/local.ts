@@ -13,6 +13,8 @@ export interface EnsureOptions {
   model: string;
   cacheDir: string;
   onProgress?: (p: Progress) => void;
+  /** Stands in for @huggingface/transformers in tests. */
+  library?: { env: { cacheDir?: string }; pipeline: (...args: any[]) => Promise<any> };
 }
 
 export interface LocalOptions extends EnsureOptions {
@@ -21,7 +23,7 @@ export interface LocalOptions extends EnsureOptions {
 
 function spec(id: string): ModelSpec {
   const m = MODELS[id];
-  if (!m) throw new EmbedError('model_unknown', `The model ${id} is not one of ${Object.keys(MODELS).join(', ')}.`, 'Pick one of the listed models.');
+  if (!m) throw new EmbedError('model_unknown', `The model ${id} is not one of ${Object.keys(MODELS).join(', ')}.`, `mera-news-local model download --model ${Object.keys(MODELS)[0]}`);
   return m;
 }
 
@@ -44,17 +46,18 @@ function sweepTemp(dir: string): void {
 
 const LIBRARY = '@huggingface/transformers';
 
-async function loadLibrary(): Promise<any> {
+async function loadLibrary(o: EnsureOptions): Promise<any> {
+  if (o.library) return o.library;
   try {
     // A variable specifier keeps the typecheck independent of the optional install.
     return await import(LIBRARY);
   } catch {
-    throw new EmbedError('model_runtime_missing', 'The in-process model runtime @huggingface/transformers is not installed.', 'Install @huggingface/transformers, or use an OpenAI-compatible endpoint instead.');
+    throw new EmbedError('model_runtime_missing', 'The in-process model runtime @huggingface/transformers is not installed.', 'npm ci');
   }
 }
 
 async function loadPipeline(m: ModelSpec, o: EnsureOptions): Promise<any> {
-  const lib = await loadLibrary();
+  const lib = await loadLibrary(o);
   lib.env.cacheDir = o.cacheDir;
   sweepTemp(o.cacheDir);
   const progress_callback = (e: { status?: string; file?: string; loaded?: number; total?: number }) => {
@@ -65,14 +68,34 @@ async function loadPipeline(m: ModelSpec, o: EnsureOptions): Promise<any> {
   try {
     return await make();
   } catch (first) {
-    // A file that is complete but unreadable (disk damage, a replaced file): drop this model's cache and fetch once more.
+    // A network failure keeps every file already complete; the next run fetches only the rest.
+    if (isNetworkFailure(first)) {
+      throw new EmbedError('download_interrupted', `The download of ${m.id} was interrupted: ${(first as Error).message}`, `mera-news-local model download --model ${m.id}`);
+    }
+    // A file that is present but cannot be read (disk damage, a replaced file): drop this model's cache and fetch once more.
     rmSync(join(o.cacheDir, m.hubId), { recursive: true, force: true });
     try {
       return await make();
-    } catch {
-      throw new EmbedError('model_load_failed', `The model ${m.id} could not be downloaded or loaded.`, `Check the network and free disk space, then run again. Cause: ${(first as Error).message}`);
+    } catch (second) {
+      if (isNetworkFailure(second)) {
+        throw new EmbedError('download_interrupted', `The download of ${m.id} was interrupted: ${(second as Error).message}`, `mera-news-local model download --model ${m.id}`);
+      }
+      throw new EmbedError('model_load_failed', `The model ${m.id} could not be loaded: ${(first as Error).message}`, `mera-news-local model download --model ${m.id}`);
     }
   }
+}
+
+const NETWORK_CODES = new Set(['ECONNRESET', 'ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'ETIMEDOUT', 'ENETUNREACH', 'EHOSTUNREACH', 'EPIPE', 'UND_ERR_SOCKET', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT', 'ABORT_ERR']);
+
+/** True when the error, or anything in its cause chain, is a failed or cut connection rather than a bad file. */
+export function isNetworkFailure(error: unknown): boolean {
+  for (let e: unknown = error, depth = 0; e && depth < 5; e = (e as { cause?: unknown }).cause, depth++) {
+    const code = (e as { code?: unknown }).code;
+    if (typeof code === 'string' && NETWORK_CODES.has(code)) return true;
+    const message = (e as { message?: unknown }).message;
+    if (typeof message === 'string' && /fetch failed|network|socket hang up|terminated|aborted/i.test(message)) return true;
+  }
+  return false;
 }
 
 /** Downloads the model files if missing; files already complete in the cache are not fetched again. */

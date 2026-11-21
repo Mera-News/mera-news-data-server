@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
-import { mkdtempSync } from 'node:fs';
+import { describe, test } from 'node:test';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { EmbedError } from '../src/embed/embedder.ts';
 import { createFakeEmbedder } from '../src/embed/fake.ts';
 import { createOpenAiCompatibleEmbedder } from '../src/embed/openai-compatible.ts';
 import { ALLOWED_LICENCES, DEFAULT_MODEL, MODELS } from '../src/embed/models.ts';
-import { createLocalEmbedder } from '../src/embed/local.ts';
+import { createLocalEmbedder, ensureModel } from '../src/embed/local.ts';
 
 const norm = (v: Float32Array) => Math.sqrt(v.reduce((s, x) => s + x * x, 0));
 
@@ -79,4 +80,41 @@ test('local embedder gives vectors of length 1', { skip: process.env.LOCAL_EMBED
   const [v] = await e.embedPassages(['Rain floods the city']);
   assert.equal(v!.length, e.dims);
   assert.ok(Math.abs(norm(v!) - 1) < 1e-4);
+});
+
+describe('model files on a failed load', () => {
+  const setup = () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), 'embed-cache-'));
+    const kept = join(cacheDir, MODELS[DEFAULT_MODEL]!.hubId, 'tokenizer.json');
+    mkdirSync(dirname(kept), { recursive: true });
+    writeFileSync(kept, '{}');
+    return { cacheDir, kept };
+  };
+  const failing = (...errors: unknown[]) => {
+    let calls = 0;
+    return { calls: () => calls, library: { env: {}, pipeline: async () => { const e = errors[Math.min(calls++, errors.length - 1)]; if (e) throw e; return async () => ({ data: new Float32Array(0) }); } } };
+  };
+
+  test('a network failure keeps every downloaded file and asks to resume', async () => {
+    const { cacheDir, kept } = setup();
+    const lib = failing(new TypeError('fetch failed', { cause: Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }) }));
+    await assert.rejects(ensureModel({ model: DEFAULT_MODEL, cacheDir, library: lib.library }), (e: unknown) => e instanceof EmbedError && e.code === 'download_interrupted' && e.fix === `mera-news-local model download --model ${DEFAULT_MODEL}`);
+    assert.equal(existsSync(kept), true);
+    assert.equal(lib.calls(), 1);
+  });
+
+  test('an unreadable file drops the model cache and loads once more', async () => {
+    const { cacheDir, kept } = setup();
+    const lib = failing(new Error('Protobuf parsing failed'), null);
+    await ensureModel({ model: DEFAULT_MODEL, cacheDir, library: lib.library });
+    assert.equal(existsSync(kept), false);
+    assert.equal(lib.calls(), 2);
+  });
+
+  test('a second load failure is reported, not retried again', async () => {
+    const { cacheDir } = setup();
+    const lib = failing(new Error('Protobuf parsing failed'));
+    await assert.rejects(ensureModel({ model: DEFAULT_MODEL, cacheDir, library: lib.library }), (e: unknown) => e instanceof EmbedError && e.code === 'model_load_failed');
+    assert.equal(lib.calls(), 2);
+  });
 });
