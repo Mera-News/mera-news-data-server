@@ -114,6 +114,9 @@ async function getExtractor() {
   env.cacheDir = join(D, 'models');
   const t0 = performance.now();
   extractor = await pipeline('feature-extraction', M.hub, { dtype: 'q8' });
+  // The library's last-token pooling takes the last position, which is padding for every
+  // shorter text in a batch unless the tokenizer pads on the left.
+  if (M.pooling === 'last_token') extractor.tokenizer.padding_side = 'left';
   if (!ck.load) {
     const folder = join(D, 'models', M.hub);
     const onnx = existsSync(join(folder, 'onnx')) ? readdirSync(join(folder, 'onnx')) : [];

@@ -66,7 +66,7 @@ async function loadPipeline(m: ModelSpec, o: EnsureOptions): Promise<any> {
   // dtype q8 resolves to onnx/model_quantized.onnx, the same as the bench.
   const make = () => lib.pipeline('feature-extraction', m.hubId, { dtype: 'q8', revision: m.revision, cache_dir: o.cacheDir, progress_callback });
   try {
-    return await make();
+    return leftPadded(m, await make());
   } catch (first) {
     // A network failure keeps every file already complete; the next run fetches only the rest.
     if (isNetworkFailure(first)) {
@@ -75,7 +75,7 @@ async function loadPipeline(m: ModelSpec, o: EnsureOptions): Promise<any> {
     // A file that is present but cannot be read (disk damage, a replaced file): drop this model's cache and fetch once more.
     rmSync(join(o.cacheDir, m.hubId), { recursive: true, force: true });
     try {
-      return await make();
+      return leftPadded(m, await make());
     } catch (second) {
       if (isNetworkFailure(second)) {
         throw new EmbedError('download_interrupted', `The download of ${m.id} was interrupted: ${(second as Error).message}`, `mera-news-local model download --model ${m.id}`);
@@ -83,6 +83,13 @@ async function loadPipeline(m: ModelSpec, o: EnsureOptions): Promise<any> {
       throw new EmbedError('model_load_failed', `The model ${m.id} could not be loaded: ${(first as Error).message}`, `mera-news-local model download --model ${m.id}`);
     }
   }
+}
+
+// The library's last-token pooling takes the last position, which is padding for every
+// shorter text in a batch unless the tokenizer pads on the left.
+function leftPadded(m: ModelSpec, extractor: any): any {
+  if (m.pooling === 'last_token' && extractor?.tokenizer) extractor.tokenizer.padding_side = 'left';
+  return extractor;
 }
 
 const NETWORK_CODES = new Set(['ECONNRESET', 'ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'ETIMEDOUT', 'ENETUNREACH', 'EHOSTUNREACH', 'EPIPE', 'UND_ERR_SOCKET', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT', 'ABORT_ERR']);
