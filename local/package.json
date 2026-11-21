@@ -9,7 +9,7 @@
     "node": ">=24"
   },
   "scripts": {
-    "test": "node --test test/",
+    "test": "node --import ./scripts/register.mjs --test test/",
     "typecheck": "tsc -p tsconfig.json"
   },
   "devDependencies": {

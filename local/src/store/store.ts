@@ -317,6 +317,14 @@ export class Store {
     return { id, storyKey };
   }
 
+  /** Which of these fingerprints the file has seen, so known items are not embedded again. */
+  knownFingerprints(keys: string[]): Set<string> {
+    const known = new Set<string>();
+    const lookup = this.db.prepare('SELECT 1 FROM fingerprints WHERE key = ?');
+    for (const key of keys) if (lookup.get(key)) known.add(key);
+    return known;
+  }
+
   /** Articles a reembed to the new model has not reached yet. */
   pendingReembed(limit: number): { id: string; title: string; description: string | null }[] {
     return this.db
