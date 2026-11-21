@@ -1,0 +1,168 @@
+[
+ {
+  "id": "t01",
+  "text": "central bank interest rate decisions",
+  "lang": "en"
+ },
+ {
+  "id": "t02",
+  "text": "inflation and the cost of living",
+  "lang": "en"
+ },
+ {
+  "id": "t03",
+  "text": "climate summit negotiations on emissions cuts",
+  "lang": "en",
+  "crossLanguage": true
+ },
+ {
+  "id": "t04",
+  "text": "artificial intelligence regulation",
+  "lang": "en",
+  "crossLanguage": true
+ },
+ {
+  "id": "t05",
+  "text": "breakthroughs in cancer treatment",
+  "lang": "en"
+ },
+ {
+  "id": "t06",
+  "text": "war and ceasefire talks",
+  "lang": "en",
+  "crossLanguage": true
+ },
+ {
+  "id": "t07",
+  "text": "elecciones municipales",
+  "lang": "es",
+  "crossLanguage": true
+ },
+ {
+  "id": "t08",
+  "text": "crisis de la vivienda y alquileres",
+  "lang": "es"
+ },
+ {
+  "id": "t09",
+  "text": "selección nacional de fútbol y mundial",
+  "lang": "es",
+  "crossLanguage": true
+ },
+ {
+  "id": "t10",
+  "text": "energías renovables y precio de la luz",
+  "lang": "es",
+  "crossLanguage": true
+ },
+ {
+  "id": "t11",
+  "text": "incendios forestales y sequía",
+  "lang": "es"
+ },
+ {
+  "id": "t12",
+  "text": "réforme des retraites et grèves",
+  "lang": "fr",
+  "crossLanguage": true
+ },
+ {
+  "id": "t13",
+  "text": "championnat de football et transferts",
+  "lang": "fr"
+ },
+ {
+  "id": "t14",
+  "text": "cyberattaques et protection des données",
+  "lang": "fr",
+  "crossLanguage": true
+ },
+ {
+  "id": "t15",
+  "text": "changement climatique et énergie nucléaire",
+  "lang": "fr"
+ },
+ {
+  "id": "t16",
+  "text": "Bundestagswahl und Koalitionsverhandlungen",
+  "lang": "de",
+  "crossLanguage": true
+ },
+ {
+  "id": "t17",
+  "text": "Energiewende und Strompreise",
+  "lang": "de"
+ },
+ {
+  "id": "t18",
+  "text": "Bundesliga und Champions League",
+  "lang": "de"
+ },
+ {
+  "id": "t19",
+  "text": "Fachkräftemangel und Einwanderung",
+  "lang": "de"
+ },
+ {
+  "id": "t20",
+  "text": "eleições presidenciais e pesquisas de intenção de voto",
+  "lang": "pt",
+  "crossLanguage": true
+ },
+ {
+  "id": "t21",
+  "text": "desmatamento da Amazônia",
+  "lang": "pt",
+  "crossLanguage": true
+ },
+ {
+  "id": "t22",
+  "text": "saúde pública e vacinação",
+  "lang": "pt"
+ },
+ {
+  "id": "t23",
+  "text": "economia e taxa de juros no Brasil",
+  "lang": "pt"
+ },
+ {
+  "id": "t24",
+  "text": "cinema e festivais de música",
+  "lang": "pt"
+ },
+ {
+  "id": "t25",
+  "text": "मानसून और बाढ़",
+  "lang": "hi",
+  "crossLanguage": true
+ },
+ {
+  "id": "t26",
+  "text": "भारतीय क्रिकेट टीम और आईपीएल",
+  "lang": "hi",
+  "crossLanguage": true
+ },
+ {
+  "id": "t27",
+  "text": "शेयर बाजार और रुपये की कीमत",
+  "lang": "hi"
+ },
+ {
+  "id": "t28",
+  "text": "चुनाव और राजनीतिक दलों के गठबंधन",
+  "lang": "hi",
+  "crossLanguage": true
+ },
+ {
+  "id": "t29",
+  "text": "space exploration and new satellite launches",
+  "lang": "en",
+  "crossLanguage": true
+ },
+ {
+  "id": "t30",
+  "text": "refugees and migration across borders",
+  "lang": "en",
+  "crossLanguage": true
+ }
+]
