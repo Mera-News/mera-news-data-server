@@ -10,6 +10,16 @@ const alive = (pid: number): boolean => {
   }
 };
 
+/** The process id holding the write lock, or null when no live process holds it. */
+export function writeLockHolder(dbPath: string): number | null {
+  try {
+    const pid = Number(readFileSync(`${dbPath}.lock`, 'utf8').trim());
+    return pid && alive(pid) ? pid : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * One writer at a time: a lock file next to the news file, holding the writer's
  * process id. A lock left by a process that is gone is taken over.

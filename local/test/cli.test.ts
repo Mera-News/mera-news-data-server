@@ -249,10 +249,24 @@ describe('ingest and status', () => {
     const status = await cli(home, ['status']);
     assert.equal(status.code, 0);
     assert.equal(status.json.articles, 3);
-    assert.deepEqual(status.json.feeds, { total: 1, ok: 1, failed: 0 });
+    assert.deepEqual(status.json.feeds, { total: 1, ok: 1, failed: 0, notFetched: 0 });
+    assert.equal(status.json.fetching, false);
     assert.deepEqual(status.json.problems, []);
     const text = await inProcess(home, ['status'], {}, true);
     assert.match(text.stdout, /^Working\. 3 articles from 1 of 1 feeds\. Last fetch just now\.\nNext: mera-news-local ingest\n$/);
+
+    // A feed added since the fetch is counted as not fetched yet, and a running fetch is named.
+    await cli(home, ['feeds', 'add', 'https://later.example.test/rss.xml']);
+    writeFileSync(join(home, 'news.db.lock'), `${process.pid}\n`);
+    try {
+      const later = await cli(home, ['status']);
+      assert.deepEqual(later.json.feeds, { total: 2, ok: 1, failed: 0, notFetched: 1 });
+      assert.equal(later.json.fetching, true);
+      const laterText = await inProcess(home, ['status'], {}, true);
+      assert.match(laterText.stdout, /^Working\. 3 articles from 1 of 2 feeds, 1 not fetched yet\. Last fetch just now\. A fetch is running now\.\n/);
+    } finally {
+      rmSync(join(home, 'news.db.lock'), { force: true });
+    }
   });
 
   it('exits 3 when one feed fails, keeps the good feed, and status lists the failed feed', async () => {
@@ -264,7 +278,7 @@ describe('ingest and status', () => {
     assert.equal(out.json.articlesNew, 3);
     assert.equal(out.json.failed.length, 1);
     const status = await cli(home, ['status']);
-    assert.deepEqual(status.json.feeds, { total: 2, ok: 1, failed: 1 });
+    assert.deepEqual(status.json.feeds, { total: 2, ok: 1, failed: 1, notFetched: 0 });
     assert.equal(status.json.next, 'mera-news-local feeds list --failed');
     assert.match((await inProcess(home, ['status'], {}, true)).stdout, /^Partly working\. 3 articles from 1 of 2 feeds\..*\n127\.0\.0\.1:\d+ \(HTTP 404\), last worked never\n/s);
     const failed = await cli(home, ['feeds', 'list', '--failed']);

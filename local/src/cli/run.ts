@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { DEFAULT_MODEL, licenceNotice } from '../embed/models.ts';
 import { CONTACT_KEY, requireContact, runIngest, type IngestEvent } from '../ingest/ingest.ts';
-import { acquireWriteLock } from '../ingest/lock.ts';
+import { acquireWriteLock, writeLockHolder } from '../ingest/lock.ts';
 import { Store } from '../store/store.ts';
 import { CliError, ERRORS, refusalOf } from './errors.ts';
 import { loadSearch, loadServe, type SearchFn, type ServeFn } from './seams.ts';
@@ -427,10 +427,13 @@ const ago = (iso: string, now = Date.now()): string => {
   return unit(Math.round(minutes / 1440), 'day');
 };
 
-function status(_ctx: Ctx, store: Store): Result {
+function status(ctx: Ctx, store: Store): Result {
   const feeds = store.listFeeds({ activeOnly: true });
   const failedFeeds = feeds.filter((f) => failedStatus(f.last_fetch_status));
   const okFeeds = feeds.filter((f) => f.last_fetch_status === 'ok' || f.last_fetch_status === 'not_modified');
+  // The rest have never been fetched: added since the last fetch, or a fetch is under way.
+  const notFetched = feeds.length - okFeeds.length - failedFeeds.length;
+  const fetching = writeLockHolder(ctx.home.db) !== null;
   const articles = store.articleCount();
   const last = store.lastIngestAt();
   const problems: { code: string; message: string; fix: string }[] = [...store.integrityProblems()];
@@ -457,9 +460,11 @@ function status(_ctx: Ctx, store: Store): Result {
       ? 'No feeds yet.'
       : !last
         ? `${feeds.length.toLocaleString('en-US')} feeds, nothing fetched yet.`
-        : `${failedFeeds.length === 0 ? 'Working' : okFeeds.length === 0 ? 'Not working' : 'Partly working'}. ${articles.toLocaleString('en-US')} articles from ${okFeeds.length} of ${feeds.length} feeds. Last fetch ${ago(last)}.`;
+        : `${failedFeeds.length === 0 ? 'Working' : okFeeds.length === 0 ? 'Not working' : 'Partly working'}. ${articles.toLocaleString('en-US')} articles from ${okFeeds.length} of ${feeds.length} feeds${
+            notFetched > 0 ? `, ${notFetched} not fetched yet` : ''
+          }. Last fetch ${ago(last)}.${fetching ? ' A fetch is running now.' : ''}`;
   const text = [head, ...(note ? [note] : []), ...failed.map((f) => `${f.host} (${String(f.reason).replace(/\.$/, '')}), last worked ${f.lastSuccess ? ago(f.lastSuccess) : 'never'}`), ...problems.map((p) => p.message), `Next: ${next}`].join('\n');
-  return { data: { articles, feeds: { total: feeds.length, ok: okFeeds.length, failed: failed.length }, lastIngestAt: last, failed, problems, ...(note ? { note } : {}), next }, text };
+  return { data: { articles, feeds: { total: feeds.length, ok: okFeeds.length, failed: failed.length, notFetched }, fetching, lastIngestAt: last, failed, problems, ...(note ? { note } : {}), next }, text };
 }
 
 // ---- prune and reembed
