@@ -29,7 +29,7 @@ the internet: the feeds themselves, and a one-time download of the model (about 
 
 ### What you need
 
-- Node.js 24 and npm.
+- Node.js 24 or newer, and npm.
 - git.
 - About 1.5 GB of free memory while articles are fetched, and about 300 MB of disk for the model.
 
@@ -214,7 +214,7 @@ If you only want to try it, take these choices and follow the steps in order:
 
 ## 2. What you need
 
-- Node.js 24 and npm.
+- Node.js 24 or newer, and npm.
 - git.
 - A MongoDB Atlas account (cloud.mongodb.com). The free tier is enough to try it. MongoDB
   Community Edition with its search process is not tested yet (step 5).

@@ -10,7 +10,7 @@ Mera News, the app, runs this code inside a private service that adds accounts, 
 
 What you need:
 
-- Node.js 24 and npm
+- Node.js 24 or newer, and npm
 - A MongoDB Atlas cluster (the free tier is enough to try it). MongoDB Community Edition with its search process is not tested yet: see the guide, step 5.
 - Redis 7
 - A Jina API key, or any OpenAI-compatible embeddings server, such as Ollama on your own machine
