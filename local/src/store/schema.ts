@@ -100,4 +100,9 @@ CREATE TRIGGER articles_fts_update AFTER UPDATE OF title, description ON article
   INSERT INTO articles_fts (rowid, title, description) VALUES (new.rowid, new.title, new.description);
 END;
 `,
+  `
+-- When each feed last answered, so a failing feed can say when it last worked.
+ALTER TABLE feeds ADD COLUMN last_ok_at TEXT;
+UPDATE feeds SET last_ok_at = last_fetch_at WHERE last_fetch_status IN ('ok', 'not_modified');
+`,
 ];

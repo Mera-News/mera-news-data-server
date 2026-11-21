@@ -254,3 +254,96 @@ describe('publish dates', () => {
     assert.equal(normalizePubDate('2019-03-01T00:00:00Z', seen), '2019-03-01T00:00:00.000Z');
   });
 });
+
+describe('when a feed last worked', () => {
+  it('keeps the last success through later failures', () => {
+    const store = new Store(freshPath());
+    const feed = store.upsertFeed(feedInput('https://harbour.example.test/rss')).id;
+    store.recordFetch(feed, { at: '2026-11-20T10:00:00.000Z', status: 'ok' });
+    store.recordFetch(feed, { at: '2026-11-20T11:00:00.000Z', status: 'not_modified' });
+    store.recordFetch(feed, { at: '2026-11-20T12:00:00.000Z', status: 'failed', error: 'HTTP 404.' });
+    const row = store.listFeeds()[0]!;
+    assert.equal(row.last_ok_at, '2026-11-20T11:00:00.000Z');
+    assert.equal(row.last_fetch_at, '2026-11-20T12:00:00.000Z');
+    store.close();
+  });
+
+  it('fills it in when an older file is upgraded', () => {
+    const path = freshPath();
+    const old = new Store(path, MIGRATIONS.slice(0, 1));
+    const feed = old.upsertFeed(feedInput('https://harbour.example.test/rss')).id;
+    old.db.prepare("UPDATE feeds SET last_fetch_at = '2026-11-01T00:00:00.000Z', last_fetch_status = 'ok' WHERE id = ?").run(feed);
+    old.close();
+    const upgraded = new Store(path);
+    assert.equal(upgraded.listFeeds()[0]!.last_ok_at, '2026-11-01T00:00:00.000Z');
+    upgraded.close();
+  });
+});
+
+describe('nearest articles', () => {
+  const unit = (...v: number[]) => {
+    const f = new Float32Array(v);
+    const n = Math.hypot(...f);
+    return f.map((x) => x / n);
+  };
+  const seed = (store: Store) => {
+    store.assertEmbeddingModel({ id: 'test-model', dims: 3 });
+    const feed = store.upsertFeed(feedInput('https://harbour.example.test/rss')).id;
+    const at = (d: string) => `2026-11-${d}T00:00:00.000Z`;
+    store.writeFeedFetch(
+      feed,
+      [
+        item('https://harbour.example.test/east', { vector: unit(1, 0, 0), pubDate: at('10') }),
+        item('https://harbour.example.test/east-ish', { vector: unit(0.9, 0.1, 0), pubDate: at('01') }),
+        item('https://harbour.example.test/north', { vector: unit(0, 1, 0), pubDate: at('15') }),
+      ],
+      ok(),
+      null,
+    );
+  };
+  const urls = (store: Store, hits: { id: string }[]) =>
+    hits.map((h) => (store.db.prepare('SELECT article_url FROM articles WHERE id = ?').get(h.id) as { article_url: string }).article_url.split('/').pop());
+
+  it('runs on sqlite-vec and gives the same answer as a scan, with and without a date', () => {
+    const store = new Store(freshPath());
+    assert.equal(store.vectorIndex, true, 'sqlite-vec did not load on this platform');
+    seed(store);
+    const q = unit(1, 0, 0);
+    assert.deepEqual(urls(store, store.nearest(q, 2)), ['east', 'east-ish']);
+    assert.deepEqual(urls(store, store.nearest(q, 2)), urls(store, store.scanNearest(q, 2)));
+    assert.deepEqual(urls(store, store.nearest(q, 2, '2026-11-05T00:00:00.000Z')), ['east', 'north']);
+    assert.deepEqual(urls(store, store.nearest(q, 2, '2026-11-05T00:00:00.000Z')), urls(store, store.scanNearest(q, 2, '2026-11-05T00:00:00.000Z')));
+    store.close();
+  });
+
+  it('falls back to a scan when the extension cannot load', () => {
+    const store = new Store(freshPath(), MIGRATIONS, { vectorExtension: false });
+    assert.equal(store.vectorIndex, false);
+    seed(store);
+    assert.deepEqual(urls(store, store.nearest(unit(0, 1, 0), 1)), ['north']);
+    store.close();
+  });
+
+  it('drops pruned articles from the index and rebuilds it after a change of size', () => {
+    const store = new Store(freshPath());
+    seed(store);
+    store.prune('2026-11-05T00:00:00.000Z');
+    assert.equal((store.db.prepare('SELECT COUNT(*) AS n FROM article_vec').get() as { n: number }).n, 2);
+    const next = { id: 'bigger', dims: 4 };
+    store.beginReembed(next);
+    store.setNextEmbeddings(store.pendingReembed(10).map((r, i) => ({ id: r.id, vector: i === 0 ? unit(1, 0, 0, 0) : unit(0, 0, 0, 1) })));
+    store.finishReembed(next);
+    assert.equal(store.nearest(unit(0, 0, 0, 1), 1).length, 1);
+    store.close();
+  });
+
+  it('rebuilds a stale index when the file is opened again', () => {
+    const path = freshPath();
+    const plain = new Store(path, MIGRATIONS, { vectorExtension: false });
+    seed(plain);
+    plain.close();
+    const indexed = new Store(path);
+    assert.equal((indexed.db.prepare('SELECT COUNT(*) AS n FROM article_vec').get() as { n: number }).n, 3);
+    indexed.close();
+  });
+});

@@ -1,6 +1,16 @@
 import { randomBytes } from 'node:crypto';
+import { createRequire } from 'node:module';
 import { DatabaseSync } from 'node:sqlite';
 import { MIGRATIONS } from './schema.ts';
+
+/** The sqlite-vec extension's file, or null where it has no build. */
+function vectorExtensionPath(): string | null {
+  try {
+    return (createRequire(import.meta.url)('sqlite-vec') as { getLoadablePath(): string }).getLoadablePath();
+  } catch {
+    return null;
+  }
+}
 
 /** A copy key joins an article only to a story whose article arrived within this window, as on the full server. */
 export const STORY_WINDOW_HOURS = 48;
@@ -46,6 +56,7 @@ export interface FeedRow {
   last_fetch_at: string | null;
   last_fetch_status: string | null;
   last_fetch_error: string | null;
+  last_ok_at: string | null;
   consecutive_failures: number;
 }
 
@@ -123,9 +134,11 @@ export function migrate(db: DatabaseSync, migrations: readonly string[] = MIGRAT
 
 export class Store {
   readonly db: DatabaseSync;
+  /** Whether nearest-article search runs on sqlite-vec; otherwise it scans the stored vectors. */
+  readonly vectorIndex: boolean;
 
-  constructor(path: string, migrations: readonly string[] = MIGRATIONS) {
-    this.db = new DatabaseSync(path);
+  constructor(path: string, migrations: readonly string[] = MIGRATIONS, options: { vectorExtension?: boolean } = {}) {
+    this.db = new DatabaseSync(path, { allowExtension: true });
     // WAL and a busy timeout, so `serve` can read while one ingest writes.
     this.db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
     try {
@@ -134,6 +147,35 @@ export class Store {
       this.db.close();
       throw error;
     }
+    const extension = options.vectorExtension === false ? null : vectorExtensionPath();
+    let loaded = false;
+    if (extension) {
+      try {
+        this.db.loadExtension(extension);
+        loaded = true;
+      } catch {
+        loaded = false;
+      }
+    }
+    this.db.enableLoadExtension(false);
+    this.vectorIndex = loaded;
+    const model = this.embeddingModel();
+    if (loaded && model) this.syncVectorIndex(model.dims);
+  }
+
+  /** Brings the vector index in line with the stored vectors, rebuilding it when they differ. */
+  private syncVectorIndex(dims: number, force = false): void {
+    if (!this.vectorIndex) return;
+    const exists = this.db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'article_vec'").get();
+    if (exists && !force) {
+      const indexed = (this.db.prepare('SELECT COUNT(*) AS n FROM article_vec').get() as { n: number }).n;
+      if (indexed === this.articleCount()) return;
+    }
+    this.transaction(() => {
+      this.db.exec('DROP TABLE IF EXISTS article_vec');
+      this.db.exec(`CREATE VIRTUAL TABLE article_vec USING vec0(embedding float[${dims}] distance_metric=cosine, pub_ts integer)`);
+      this.db.exec("INSERT INTO article_vec (rowid, embedding, pub_ts) SELECT rowid, embedding, CAST(strftime('%s', pub_date) AS INTEGER) FROM articles");
+    });
   }
 
   close(): void {
@@ -181,6 +223,7 @@ export class Store {
     if (!stored) {
       this.setMeta('embedding_model', model.id);
       this.setMeta('embedding_dims', String(model.dims));
+      this.syncVectorIndex(model.dims);
       return;
     }
     if (stored.id !== model.id || stored.dims !== model.dims) {
@@ -272,9 +315,10 @@ export class Store {
         `UPDATE feeds SET last_fetch_at = ?, last_fetch_status = ?, last_fetch_error = ?,
            http_etag = COALESCE(?, http_etag), http_last_modified = COALESCE(?, http_last_modified),
            consecutive_failures = CASE WHEN ? THEN consecutive_failures + 1 ELSE 0 END,
+           last_ok_at = CASE WHEN ? THEN last_ok_at ELSE ? END,
            updated_at = ? WHERE id = ?`,
       )
-      .run(record.at, record.status, record.error ?? null, record.etag ?? null, record.lastModified ?? null, failed ? 1 : 0, record.at, feedId);
+      .run(record.at, record.status, record.error ?? null, record.etag ?? null, record.lastModified ?? null, failed ? 1 : 0, failed ? 1 : 0, record.at, record.at, feedId);
   }
 
   /** Its story key is the oldest story a copy key points at within the window, otherwise its own id. */
@@ -312,6 +356,11 @@ export class Store {
            pub_date, created_at, run_id, story_key, embedding) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(id, feedId, input.articleUrl, input.title, input.description, input.imageUrl, input.languageCode, input.pubDate, createdAt, runId, storyKey, encodeVector(input.vector));
+    if (this.vectorIndex && this.db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'article_vec'").get()) {
+      this.db
+        .prepare('INSERT INTO article_vec (rowid, embedding, pub_ts) SELECT rowid, embedding, ? FROM articles WHERE id = ?')
+        .run(BigInt(Math.floor(Date.parse(input.pubDate) / 1000)), id);
+    }
     const addKey = this.db.prepare('INSERT INTO copy_keys (key, article_id) VALUES (?, ?) ON CONFLICT DO NOTHING');
     for (const key of keys) addKey.run(key, id);
     return { id, storyKey };
@@ -363,6 +412,44 @@ export class Store {
       this.setMeta('embedding_dims', String(model.dims));
       this.db.prepare("DELETE FROM meta WHERE key = 'reembed_model'").run();
     });
+    this.syncVectorIndex(model.dims, true);
+  }
+
+  /**
+   * The nearest articles to a vector, nearest first, published at or after `since` when given.
+   * `distance` is the cosine distance (0 is the same direction).
+   */
+  nearest(vector: Float32Array, k: number, since?: string): { id: string; distance: number }[] {
+    if (k <= 0 || this.articleCount() === 0) return [];
+    if (this.vectorIndex && this.db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'article_vec'").get()) {
+      const sinceTs = since ? BigInt(Math.floor(Date.parse(since) / 1000)) : null;
+      const rows = (sinceTs === null
+        ? this.db.prepare('SELECT rowid, distance FROM article_vec WHERE embedding MATCH ? AND k = ?').all(encodeVector(vector), k)
+        : this.db.prepare('SELECT rowid, distance FROM article_vec WHERE embedding MATCH ? AND k = ? AND pub_ts >= ?').all(encodeVector(vector), k, sinceTs)) as { rowid: number; distance: number }[];
+      const idOf = this.db.prepare('SELECT id FROM articles WHERE rowid = ?');
+      return rows.map((r) => ({ id: (idOf.get(r.rowid) as { id: string }).id, distance: r.distance }));
+    }
+    return this.scanNearest(vector, k, since);
+  }
+
+  /** The same answer as `nearest`, by reading every stored vector. */
+  scanNearest(vector: Float32Array, k: number, since?: string): { id: string; distance: number }[] {
+    const rows = (since
+      ? this.db.prepare('SELECT id, embedding FROM articles WHERE pub_date >= ?').iterate(since)
+      : this.db.prepare('SELECT id, embedding FROM articles').iterate()) as Iterable<{ id: string; embedding: Uint8Array }>;
+    const best: { id: string; distance: number }[] = [];
+    for (const row of rows) {
+      const v = decodeVector(row.embedding);
+      let dot = 0;
+      for (let i = 0; i < v.length; i++) dot += v[i]! * vector[i]!;
+      const distance = 1 - dot;
+      if (best.length < k || distance < best[best.length - 1]!.distance) {
+        best.push({ id: row.id, distance });
+        best.sort((a, b) => a.distance - b.distance || (a.id < b.id ? -1 : 1));
+        if (best.length > k) best.pop();
+      }
+    }
+    return best;
   }
 
   startRun(at = new Date().toISOString()): string {
@@ -424,7 +511,12 @@ export class Store {
 
   /** Deletes articles published before the date. Their addresses stay known, so they never come back. */
   prune(olderThan: string): number {
-    return Number(this.db.prepare('DELETE FROM articles WHERE pub_date < ?').run(olderThan).changes);
+    return this.transaction(() => {
+      if (this.vectorIndex && this.db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'article_vec'").get()) {
+        this.db.prepare('DELETE FROM article_vec WHERE rowid IN (SELECT rowid FROM articles WHERE pub_date < ?)').run(olderThan);
+      }
+      return Number(this.db.prepare('DELETE FROM articles WHERE pub_date < ?').run(olderThan).changes);
+    });
   }
 }
 
