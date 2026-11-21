@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { DEFAULT_MODEL } from '../embed/models.ts';
+import { DEFAULT_MODEL, licenceNotice } from '../embed/models.ts';
 import { CONTACT_KEY, requireContact, runIngest, type IngestEvent } from '../ingest/ingest.ts';
 import { acquireWriteLock } from '../ingest/lock.ts';
 import { Store } from '../store/store.ts';
@@ -23,7 +23,6 @@ import {
   type Settings,
 } from './settings.ts';
 
-export const ARTICLE_WARN_LIMIT = 100_000;
 const CMD = 'mera-news-local';
 
 export interface Io {
@@ -64,7 +63,7 @@ const OPTIONS = {
 const HELP = [
   'config set <key> <value> | config show',
   'model download [--model <id>]',
-  'feeds add <url> | feeds load --only <selector> | feeds list [--failed]',
+  'feeds add <url> | feeds load --only <selector> [--limit N] | feeds list [--failed]',
   'ingest [--feed <url>]',
   'search "<text>" [--limit N]',
   'status | prune --older-than <days> | reembed --model <id>',
@@ -210,7 +209,8 @@ async function configShow(ctx: Ctx): Promise<Result> {
 async function modelDownload(ctx: Ctx): Promise<Result> {
   const model = ctx.values.model ?? ctx.settings['embedder.model'] ?? DEFAULT_MODEL;
   if (!ctx.deps.env.MERA_NEWS_LOCAL_TEST_EMBEDDER) await downloadModel(embedderRequest(ctx), model);
-  return { data: { model }, text: `The model ${model} is ready.` };
+  const notice = licenceNotice(model);
+  return { data: notice ? { model, notice } : { model }, text: notice ? `The model ${model} is ready.\n${notice}` : `The model ${model} is ready.` };
 }
 
 // ---- feeds
@@ -249,7 +249,17 @@ async function feedsAdd(ctx: Ctx, args: string[]): Promise<Result> {
 interface SeedFeed {
   uri: string;
   language_code?: string;
+  is_valid?: boolean;
+  gated?: boolean;
+  bot_protection?: boolean;
 }
+
+/** This setup is built for a small set of sources. */
+export const DEFAULT_LOAD_LIMIT = 20;
+export const MANY_FEEDS_NOTE_AT = 50;
+
+/** A feed the list marks as working, open and not behind bot protection. */
+const usable = (feed: SeedFeed) => feed.is_valid !== false && feed.gated !== true && feed.bot_protection !== true;
 interface SeedPublication {
   publication_name: string;
   publication_website_uri?: string | null;
@@ -297,13 +307,31 @@ async function feedsLoad(ctx: Ctx): Promise<Result> {
   } catch {
     throw new CliError('selector_invalid', `The feed list ${file} could not be read.`);
   }
+  const loadAll = selectors.some((s) => s.kind === 'all');
+  const limit = loadAll ? Infinity : whole('limit', ctx.values.limit, DEFAULT_LOAD_LIMIT)!;
+  // A feed named by its address always loads. Otherwise: in the list's own order, the first
+  // usable feed of each publication, up to the limit.
   const wanted: { pub: SeedPublication; feed: SeedFeed; country: string }[] = [];
+  const urlSelectors = selectors.filter((s) => s.kind === 'url');
+  const broad = selectors.filter((s) => s.kind !== 'url');
+  let picked = 0;
   for (const [country, pubs] of Object.entries(data)) {
     for (const pub of pubs) {
+      let tookOne = false;
       for (const feed of pub.publication_rss_feed_uris) {
-        if (selectors.some((s) => selects(s, feed, country))) wanted.push({ pub, feed, country });
+        if (urlSelectors.some((s) => selects(s, feed, country))) {
+          wanted.push({ pub, feed, country });
+          continue;
+        }
+        if (tookOne || picked >= limit || !usable(feed) || !broad.some((s) => selects(s, feed, country))) continue;
+        wanted.push({ pub, feed, country });
+        tookOne = true;
+        picked++;
       }
     }
+  }
+  if (loadAll) {
+    ctx.progress({ event: 'warning', message: `This setup is meant for 10 to 20 sources. Loading all ${wanted.length} feeds makes every ingest slow; for that many, use the server setup in docs/self-host.md.` });
   }
   const empty = selectors.filter((s) => s.kind !== 'all' && !Object.entries(data).some(([c, ps]) => ps.some((p) => p.publication_rss_feed_uris.some((f) => selects(s, f, c)))));
   if (empty.length > 0) throw new CliError('selector_invalid', `Nothing in ${file} matches ${empty.map((s) => s.raw).join(', ')}.`);
@@ -408,9 +436,10 @@ function status(_ctx: Ctx, store: Store): Result {
   if (!store.getMeta(CONTACT_KEY)?.trim()) {
     problems.push({ code: 'contact_missing', message: 'No contact is set, so ingest will refuse to run.', fix: ERRORS.contact_missing!.fix! });
   }
-  if (articles > ARTICLE_WARN_LIMIT) {
-    problems.push({ code: 'too_many_articles', message: `The file holds more than ${ARTICLE_WARN_LIMIT.toLocaleString('en-US')} articles, which slows search down.`, fix: `${CMD} prune --older-than 365` });
-  }
+  const note =
+    feeds.length > MANY_FEEDS_NOTE_AT
+      ? `This setup is built for 10 to 20 feeds and now has ${feeds.length}. For more, the server setup in docs/self-host.md fits better.`
+      : null;
   const contactProblem = problems.find((p) => p.code === 'contact_missing');
   const other = problems.find((p) => p.code !== 'contact_missing');
   let next: string;
@@ -428,8 +457,8 @@ function status(_ctx: Ctx, store: Store): Result {
       : !last
         ? `${feeds.length.toLocaleString('en-US')} feeds, nothing fetched yet.`
         : `${failedFeeds.length === 0 ? 'Working' : okFeeds.length === 0 ? 'Not working' : 'Partly working'}. ${articles.toLocaleString('en-US')} articles from ${okFeeds.length} of ${feeds.length} feeds. Last fetch ${ago(last)}.`;
-  const text = [head, ...failed.map((f) => `${f.host} (${String(f.reason).replace(/\.$/, '')}), last worked ${f.lastSuccess ? ago(f.lastSuccess) : 'never'}`), ...problems.map((p) => p.message), `Next: ${next}`].join('\n');
-  return { data: { articles, feeds: { total: feeds.length, ok: okFeeds.length, failed: failed.length }, lastIngestAt: last, failed, problems, next }, text };
+  const text = [head, ...(note ? [note] : []), ...failed.map((f) => `${f.host} (${String(f.reason).replace(/\.$/, '')}), last worked ${f.lastSuccess ? ago(f.lastSuccess) : 'never'}`), ...problems.map((p) => p.message), `Next: ${next}`].join('\n');
+  return { data: { articles, feeds: { total: feeds.length, ok: okFeeds.length, failed: failed.length }, lastIngestAt: last, failed, problems, ...(note ? { note } : {}), next }, text };
 }
 
 // ---- prune and reembed

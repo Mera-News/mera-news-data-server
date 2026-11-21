@@ -5,6 +5,7 @@ import { createFakeEmbedder } from '../embed/fake.ts';
 import type { Embedder } from '../embed/embedder.ts';
 import { EmbedError } from '../embed/embedder.ts';
 import { createLocalEmbedder, ensureModel } from '../embed/local.ts';
+import { licenceNotice } from '../embed/models.ts';
 import { DEFAULT_MODEL, MODELS } from '../embed/models.ts';
 import { createOpenAiCompatibleEmbedder } from '../embed/openai-compatible.ts';
 import { parseAllowHosts, type AllowList } from '../ingest/shared.ts';
@@ -112,4 +113,6 @@ export async function downloadModel(r: EmbedderRequest, model: string): Promise<
     cacheDir: r.home.models,
     onProgress: (p) => r.onProgress?.({ event: 'model_download', done_mb: mb(p.doneBytes), total_mb: mb(p.totalBytes) }),
   });
+  const notice = licenceNotice(model);
+  if (notice) r.onProgress?.({ event: 'licence_notice', model, message: notice });
 }

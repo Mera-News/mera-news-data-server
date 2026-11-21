@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { DEFAULT_MODEL } from '../src/embed/models.ts';
 import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -128,7 +129,7 @@ describe('refusals', () => {
     expectRefusal(await cli(home, ['prune', '--older-than', '30']), 'no_ingest_yet', 2);
     const missing = await cli(home, ['reembed'], {});
     expectRefusal(missing, 'model_missing', 2);
-    assert.match(missing.json.fix, /^mera-news-local model download --model e5-small$/);
+    assert.equal(missing.json.fix, `mera-news-local model download --model ${DEFAULT_MODEL}`);
     await cli(home, ['config', 'set', 'embedder.model', 'nope']);
     expectRefusal(await cli(home, ['reembed'], {}), 'model_unknown', 1);
     expectRefusal(await cli(home, ['reembed'], { MERA_NEWS_LOCAL_TEST_EMBEDDER: 'fake:8' }), 'test_embedder_refused', 1);
@@ -303,6 +304,36 @@ describe('ingest and status', () => {
 });
 
 describe('feeds', () => {
+  it('loads at most 20 usable feeds by default, one per publication, and warns before loading all', async () => {
+    const list = {
+      XXA: Array.from({ length: 60 }, (_, i) => ({
+        publication_name: `Paper ${i}`,
+        publication_website_uri: `https://p${i}.example.test/`,
+        publication_rss_feed_uris: [
+          { uri: `https://p${i}.example.test/a.xml`, language_code: 'en', is_valid: i % 10 !== 0, gated: i === 3 },
+          { uri: `https://p${i}.example.test/b.xml`, language_code: 'en', is_valid: true },
+        ],
+      })),
+    };
+    const file = join(root, 'many-feeds.json');
+    writeFileSync(file, JSON.stringify(list));
+    const home = newHome();
+    const first = await cli(home, ['feeds', 'load', '--file', file, '--only', 'country:XXA']);
+    assert.equal(first.json.loaded, 20);
+    const urls = (await cli(home, ['feeds', 'list'])).json.feeds.map((f: { url: string }) => f.url);
+    assert.ok(urls.includes('https://p0.example.test/b.xml'), 'an invalid feed is passed over for the next one of that paper');
+    assert.ok(urls.includes('https://p3.example.test/b.xml'), 'a gated feed is passed over too');
+    assert.equal(new Set(urls.map((u: string) => new URL(u).host)).size, 20);
+    assert.equal((await cli(newHome(), ['feeds', 'load', '--file', file, '--only', 'country:XXA', '--limit', '5'])).json.loaded, 5);
+
+    const all = await cli(home, ['feeds', 'load', '--file', file, '--only', 'all']);
+    assert.equal(all.json.loaded, 60);
+    assert.match(all.stderr, /"event":"warning".*meant for 10 to 20 sources/);
+    const status = await cli(home, ['status']);
+    assert.match(status.json.note, /built for 10 to 20 feeds and now has 60/);
+  });
+
+
   it('load --only language:ja takes the Japanese feed from the list file and nothing else', async () => {
     const home = newHome();
     const out = await cli(home, ['feeds', 'load', '--file', FIXTURE, '--only', 'language:ja']);
@@ -311,7 +342,7 @@ describe('feeds', () => {
     const list = await cli(home, ['feeds', 'list']);
     assert.deepEqual(list.json.feeds.map((f: { url: string }) => f.url), ['https://tokyo.example.test/feed.xml']);
     const again = await cli(home, ['feeds', 'load', '--file', FIXTURE, '--only', 'language:en', '--only', 'country:jpn']);
-    assert.deepEqual([again.json.loaded, again.json.created], [3, 2], 'en also matches en-GB; the selector may repeat');
+    assert.deepEqual([again.json.loaded, again.json.created], [2, 1], 'en also matches en-GB, the selector may repeat, and a publication gives one feed');
   });
 
   it('the shipped list loads by country with no file argument', async () => {

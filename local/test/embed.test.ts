@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import { EmbedError } from '../src/embed/embedder.ts';
 import { createFakeEmbedder } from '../src/embed/fake.ts';
 import { createOpenAiCompatibleEmbedder } from '../src/embed/openai-compatible.ts';
-import { ALLOWED_LICENCES, DEFAULT_MODEL, MODELS } from '../src/embed/models.ts';
+import { DEFAULT_MODEL, KNOWN_LICENCES, MODELS, NON_COMMERCIAL_LICENCES, OPEN_ALTERNATIVE_MODEL, licenceNotice } from '../src/embed/models.ts';
 import { createLocalEmbedder, ensureModel } from '../src/embed/local.ts';
 
 const norm = (v: Float32Array) => Math.sqrt(v.reduce((s, x) => s + x * x, 0));
@@ -66,12 +66,16 @@ test('openai-compatible keeps the key out of errors and sends it only as a heade
   assert.ok(!calls[0]!.url.includes(KEY));
 });
 
-test('registry: allowed licences, pinned revisions, default exists', () => {
+test('registry: every model states its licence, non-commercial ones are flagged, revisions are pinned', () => {
   assert.ok(MODELS[DEFAULT_MODEL]);
+  assert.equal(MODELS[OPEN_ALTERNATIVE_MODEL]!.nonCommercial, false);
   for (const m of Object.values(MODELS)) {
-    assert.ok(ALLOWED_LICENCES.includes(m.licence), `${m.id} licence ${m.licence}`);
+    assert.ok(KNOWN_LICENCES.includes(m.licence), `${m.id} licence ${m.licence}`);
+    assert.equal(m.nonCommercial, NON_COMMERCIAL_LICENCES.includes(m.licence), `${m.id} flag`);
     assert.match(m.revision, /^[0-9a-f]{40}$/, `${m.id} revision`);
-    assert.doesNotMatch(m.hubId, /jina|gemma/i);
+    assert.doesNotMatch(m.hubId, /gemma/i);
+    if (m.nonCommercial) assert.match(licenceNotice(m.id)!, new RegExp(`non-commercial.*config set embedder.model ${OPEN_ALTERNATIVE_MODEL}`));
+    else assert.equal(licenceNotice(m.id), null);
   }
 });
 
