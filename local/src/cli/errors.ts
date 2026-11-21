@@ -30,7 +30,6 @@ export const ERRORS: Record<string, Entry> = {
   feed_url_invalid: { exit: 1, fix: `${CMD} feeds add https://example.com/rss.xml` },
   feeds_failed: { exit: 3, fix: `${CMD} feeds list --failed` },
   no_ingest_yet: { exit: 2, fix: `${CMD} ingest` },
-  not_built_yet: { exit: 1, fix: null },
   // Added beside the design's table: refusals the commands themselves can make.
   usage: { exit: 1, fix: `${CMD} help` },
   config_invalid: { exit: 1, fix: `${CMD} config show` },

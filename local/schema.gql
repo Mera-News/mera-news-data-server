@@ -1,0 +1,705 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+"""
+One article's cluster memberships from the newest COMPLETE clustering generation.
+"""
+type ArticleClusterMemberships {
+  articleId: ID!
+  clusters: [ClusterMembership!]!
+}
+
+"""Status of article processing through the pipeline"""
+enum ArticleProcessingStatus {
+  AGGREGATION_ENQUEUED
+  AGGREGATION_FAILED
+  AGGREGATION_SUCCESSFUL
+  DETECT_LANGUAGE_ENQUEUED
+  DETECT_LANGUAGE_FAILED
+  DETECT_LANGUAGE_SUCCESSFUL
+  EMBEDDING_ENQUEUED
+  EMBEDDING_FAILED
+  EMBEDDING_SUCCESSFUL
+  PENDING
+  TRANSLATION_ENQUEUED
+  TRANSLATION_FAILED
+  TRANSLATION_SKIPPED
+  TRANSLATION_SUCCESS
+}
+
+"""Sibling article returned by the relatedArticles query"""
+type ArticleSummary {
+  _id: ID!
+  article_url: String
+  country_code: String
+  description_en: String
+  image_url: String
+  language_code: String
+  pubDate: DateTime!
+  publication_name: String
+  title_en: String!
+  title_original: String
+}
+
+"""Article summary with cluster membership — used by Flow v2 hydration"""
+type ArticleWithClusters {
+  _id: ID!
+  article_url: String
+  category: String
+  clusters: [ClusterMembership!]!
+  content_categories: [String!]
+  country_code: String
+  description_en: String
+  entities: [String!]
+  event_type: String
+  genre: String
+  geo_scope: String
+  geo_tags: [GeoTagDto!]
+  image_url: String
+  language_code: String
+  maxClusterSize: Int
+  pubDate: DateTime!
+  publication_name: String
+  significance: Int
+  story_key: String
+  title: String
+  title_en: String!
+  tone: String
+  vector_sidecar_packed: String
+}
+
+type ArticlesForPublicationSourceResponse {
+  articles: [NewsArticle!]!
+  pageInfo: CursorPageInfo!
+}
+
+"""
+Hydrated articles for a set of IDs, plus the daily-delivery-cap signal. The cap is charged here (delivery point), so a clipped response means the user hit their daily article limit — distinct from IDs that simply TTL'd out.
+"""
+type ArticlesForTopicsByIdsResponse {
+  articles: [ArticleWithClusters!]!
+
+  """
+  True when the user's daily article-delivery cap clipped this response (fewer articles returned than requested).
+  """
+  dailyLimitReached: Boolean!
+
+  """
+  ISO timestamp of the next 00:00 UTC when the daily cap resets; set only when dailyLimitReached is true.
+  """
+  resetAt: String
+}
+
+"""One node of the seeded canonical category tree."""
+type CanonicalTopic {
+  id: ID!
+  label: String!
+  level: Int!
+
+  """Null while only the first level is seeded."""
+  parentId: ID
+  path: String!
+}
+
+type CanonicalTopicFacet {
+  count: Int!
+  topicId: ID!
+}
+
+type ClusterArticlesConnection {
+  articles: [NewsArticle!]!
+  pageInfo: CursorPageInfo!
+}
+
+"""
+Membership of an article in a cluster, with the HDBSCAN confidence (0.0–1.0)
+"""
+type ClusterMembership {
+  clusterId: ID!
+  confidence: Float!
+  stableClusterId: String
+}
+
+type CursorPageInfo {
+  endCursor: String
+  hasNextPage: Boolean!
+  pageSize: Int!
+}
+
+"""
+A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
+"""
+scalar DateTime
+
+type EmbeddingSearchResult {
+  article: NewsArticle!
+  score: Float!
+}
+
+"""
+A geo tag on an article (written by the tagging pipeline). city/region are optional; countryCode is always present.
+"""
+type GeoTagDto {
+  city: String
+  countryCode: String!
+  geonameId: Int
+  region: String
+}
+
+"""Top-headlines scope. COUNTRY requires countryCode; GLOBAL takes none."""
+enum HeadlineScope {
+  COUNTRY
+  GLOBAL
+}
+
+"""
+A single top-headlines scope. COUNTRY requires countryCode; GLOBAL takes none.
+"""
+input HeadlineScopeInput {
+  countryCode: String
+  limit: Int
+  scope: HeadlineScope!
+}
+
+"""
+Top-headline article ids for one scope. clusterSizes and stableClusterIds are positionally aligned with articleIds.
+"""
+type HeadlineScopeResult {
+  articleIds: [ID!]!
+  clusterSizes: [Int!]!
+  countryCode: String
+  scope: HeadlineScope!
+  stableClusterIds: [String]!
+}
+
+type NewsArticle {
+  _id: ID!
+  article_url: String!
+  category: String
+  clusterConfidence: Float
+  content_categories: [String!]
+  content_category: String
+  country: String
+  createdAt: DateTime!
+  creator: String
+  description: String!
+  description_en: String
+  description_en_internal_only: String @deprecated(reason: "Use description_en instead. Superseded by the v3 pipeline.")
+  embedding_attempts: Int
+  embedding_status: String
+  entities: [String!]
+  event_type: String
+  fetchPublicationId: ID @deprecated(reason: "v1-only link to the fetch state machine; unused by the v3 pipeline.")
+  genre: String
+  geo_scope: String
+  geo_tags: [GeoTagDto!]
+  image_url: String
+  original_language_code: String
+  processingStatus: ArticleProcessingStatus @deprecated(reason: "v1-only pipeline state; in v3 an article present in the DB is complete.")
+  pubDate: DateTime!
+  publicationSource: PublicationSource
+  publicationSourceId: ID!
+  significance: Int
+  source_uri: String!
+  title: String!
+  title_en: String
+  title_en_internal_only: String @deprecated(reason: "Use title_en instead. Superseded by the v3 pipeline.")
+  tone: String
+  translation_attempts: Int
+  translation_skip_reason: String
+  translation_skipped: Boolean
+  translation_status: String
+  type: String!
+  updatedAt: DateTime!
+}
+
+type NewsCluster {
+  _id: ID!
+  articles(
+    """Cursor to fetch articles after"""
+    after: String
+
+    """Number of articles to fetch (max 50)"""
+    first: Int = 50
+  ): ClusterArticlesConnection!
+  clusterSize: Int
+  createdAt: DateTime!
+  stableClusterId: String
+  topicConfidence: Float
+  updatedAt: DateTime!
+}
+
+type NewsPublisher {
+  _id: ID!
+  categories: [String!]
+  country_code: String!
+  country_name: String
+  createdAt: DateTime!
+  is_active: Boolean!
+  name: String!
+  publicationSources: [PublicationSource!]!
+  publication_type: String
+  subscription_uri: String
+  updatedAt: DateTime!
+  website_url: String
+}
+
+type NewsPublishersResponse {
+  newsPublishers: [NewsPublisher!]!
+  pageInfo: CursorPageInfo!
+}
+
+"""
+A hybrid (text + semantic) search hit. Deliberately headline-only: hydrate the ids you want through articlesForTopicsByIds to get body text and the link.
+"""
+type NewsSearchHit {
+  _id: ID!
+
+  """ISO-3166 alpha-2 of the publisher."""
+  country_code: String
+  image_url: String
+
+  """Publication timestamp (ISO 8601)."""
+  pubDate: String!
+  publication_name: String
+
+  """
+  Reciprocal-rank-fusion score across the text and semantic legs. Ordering signal only, with no absolute scale. Do not threshold on it.
+  """
+  score: Float!
+
+  """English headline (translated at ingest)."""
+  title_en: String!
+}
+
+type NewsServerStatus {
+  embeddingModel: String
+  headlineEditionsBuilt: Boolean!
+
+  """When the newest article was stored."""
+  lastArticleAt: DateTime
+  lastClusteringAt: DateTime
+  lastTopicLinkAt: DateTime
+
+  """True once the places seed has been loaded."""
+  placesSeeded: Boolean!
+
+  """State of the lexical search index, or null when not tracked."""
+  textIndexState: String
+  vectorIndexState: String
+}
+
+"""
+Per-article match metadata. textScore is ALWAYS null in v1. stableClusterId is the id of the article's largest-clusterSize linked cluster, null when the article is a singleton/unclustered.
+"""
+type PersonaMatchMeta {
+  articleId: ID!
+  stableClusterId: String
+  textScore: Float
+  vectorScore: Float
+}
+
+"""
+Privacy-lean persona query: topic texts + optional top-headlines scopes. No locations, weights, or exclude-topics are ever accepted here (deliberate).
+"""
+input PersonaQueryInput {
+  limitPerTopic: Int! = 20
+
+  """
+  Optional hard cap on total ids across topicResults; the lowest-priority (last) topics are truncated first once the cap is reached.
+  """
+  maxArticles: Int
+  topHeadlines: TopHeadlinesInput
+
+  """Up to MAX_TOPICS_PER_REQUEST (default 200); topicText ≤ 512."""
+  topics: [PersonaTopicInput!]!
+}
+
+"""
+Privacy-lean persona query result: per-topic article ids + match metadata, plus optional per-scope top headlines.
+"""
+type PersonaQueryResult {
+  headlineResults: [HeadlineScopeResult!]!
+  topicResults: [PersonaTopicResult!]!
+}
+
+"""
+A single persona topic. `limit` overrides the query-level limitPerTopic; `afterCursor` is the articleId of the last item on the previous page.
+"""
+input PersonaTopicInput {
+  afterCursor: ID
+  limit: Int
+
+  """
+  Require the narrowest place term in the topic rather than any of them. Request-scoped and never stored.
+  """
+  strictMatch: Boolean! = false
+  text: String!
+}
+
+"""Resolved article ids + match metadata for one persona topic."""
+type PersonaTopicResult {
+  articleIds: [ID!]!
+  hasNextPage: Boolean!
+  matchMeta: [PersonaMatchMeta!]!
+  nextCursor: ID
+  topicText: String!
+}
+
+type Place {
+  _id: ID!
+  city: String!
+  countryCode: String!
+  displayName: String!
+  latitude: Float
+  longitude: Float
+  normalized: String!
+  population: Int
+  region: String
+  search_keys: [String!]!
+}
+
+"""
+A publication (a publisher, not a feed) as shown on the publication page.
+"""
+type PublicationProfile {
+  categories: [String!]!
+  countryCode: String!
+  countryName: String
+
+  """The main source name in the requested language, else its raw name."""
+  displayName: String!
+  homepageUrl: String
+
+  """True for a government body or a regulator."""
+  isOfficial: Boolean!
+
+  """Language codes across all of its sources."""
+  languages: [String!]!
+
+  """The publisher name."""
+  name: String!
+
+  """Page through its articles with articlesForPublisher."""
+  newsPublisherId: ID!
+  publicationType: String
+
+  """
+  Every source publication_name under this publisher. Key per-publication preferences on these.
+  """
+  sourceNames: [String!]!
+
+  """
+  The publisher's subscribe page. Null means it sells no consumer subscription.
+  """
+  subscriptionUri: String
+}
+
+type PublicationSource {
+  _id: ID!
+  categories: [String!]
+  category: String!
+  codegen_checked_at: DateTime
+  codegen_status: String
+  consecutive_fetch_failures: Float
+  country_code: String!
+  country_name: String
+  createdAt: DateTime!
+  detected_language_code: String
+  feed_language_code: String
+  feed_url: String!
+  gated: Boolean!
+  is_active: Boolean!
+  is_active_codegen: Boolean
+  is_active_user: Boolean
+  last_fetch_error: String
+  last_fetch_http_status: Float
+  last_fetch_status: String
+  last_fetched_at: DateTime
+  newsPublisherId: ID
+  publication_name: String!
+  publication_type: String
+  publication_url: String
+  type: String!
+  updatedAt: DateTime!
+}
+
+type PublicationSourcesForPublisherResponse {
+  publicationSources: [PublicationSource!]!
+}
+
+"""Ordering for articlesForPublisher."""
+enum PublisherArticleOrder {
+  """
+  Newest first across all feeds over 48h, deduped by canonical URL, at most 50 per page.
+  """
+  NEWEST
+
+  """Last 24h ranked by largest cluster size (the original behaviour)."""
+  TOP_HEADLINES
+}
+
+type PublisherSearchHit {
+  _id: ID!
+  country_code: String!
+  country_name: String
+  matchingSources: [PublicationSource!]!
+  name: String!
+  subscription_uri: String
+  website_url: String
+}
+
+type Query {
+  allCountries: [String!]!
+
+  """
+  Fetch a single article by ID. Returns null if not found (e.g. TTL’d out).
+  """
+  articleById(id: ID!): NewsArticle
+  articleIdsForPersona(query: PersonaQueryInput!): PersonaQueryResult!
+  articlesForCountry(after: String, countryCode: String, first: Int = 20): ArticlesForPublicationSourceResponse!
+  articlesForPublicationSource(after: String, first: Int = 20, publicationSourceId: ID!): ArticlesForPublicationSourceResponse!
+
+  """
+  A publisher's articles across all its feeds. Default order TOP_HEADLINES: last 24h sorted by largest cluster size. order NEWEST: newest first over 48h.
+  """
+  articlesForPublisher(
+    after: String
+    first: Int = 20
+    newsPublisherId: ID!
+
+    """
+    TOP_HEADLINES (default) keeps the original view. NEWEST is newest first across all feeds.
+    """
+    order: PublisherArticleOrder = TOP_HEADLINES
+  ): ArticlesForPublicationSourceResponse!
+
+  """
+  Hydrate articles by id for followed ("tracked") stories. Same payload as articlesForTopicsByIds. dailyLimitReached is always false and resetAt is always absent. Capped at 50 ids per request.
+  """
+  articlesForStories(articleIds: [ID!]!): ArticlesForTopicsByIdsResponse!
+  articlesForTopicsByIds(articleIds: [ID!]!): ArticlesForTopicsByIdsResponse!
+
+  """
+  The seeded canonical category tree, optionally one level. Empty until the tree is seeded.
+  """
+  canonicalTopics(level: Int): [CanonicalTopic!]!
+
+  """
+  Cluster memberships for up to 500 article ids, from the newest complete clustering generation. An article with no links returns clusters: []; one whose links are all mid-swap is omitted. Response order is not request order.
+  """
+  clusterMembershipsForArticles(articleIds: [ID!]!): [ArticleClusterMemberships!]!
+  newsClusterForArticle(articleId: ID!): NewsCluster
+  newsPublishers(after: String, countryCode: String, first: Int = 20): NewsPublishersResponse!
+
+  """
+  What this server offers: whether places are seeded, how fresh the news is, and the state of clustering and headlines.
+  """
+  newsServerStatus: NewsServerStatus!
+
+  """
+  Typeahead place search (anchored prefix on the lowercase key, population desc). Returns [] for queries under 2 chars; limit capped at 15.
+  """
+  placeSearch(limit: Int! = 8, query: String!): [Place!]!
+  publicationProfile(countryCode: String, language: String, name: String, newsPublisherId: ID): PublicationProfile
+  publicationSourcesForNewsPublisher(publisherId: ID!): PublicationSourcesForPublisherResponse!
+  recentArticleCount(since: DateTime): Int!
+  relatedArticles(articleId: ID!, stableClusterId: String): [ArticleSummary!]!
+  relatedArticlesPage(
+    after: String
+    articleId: ID!
+    context: RelatedArticlesContextInput
+
+    """
+    Only coverage from these countries, ISO alpha-3 (GLOBAL for international sources). Absent or empty means all.
+    """
+    countries: [String!]
+    excludeIds: [ID!]
+    first: Int = 10
+
+    """
+    Only coverage in these languages, base tags such as `de`. Absent or empty means all.
+    """
+    languages: [String!]
+    sortMode: RelatedSortMode = RELEVANCE
+    stableClusterId: String
+  ): RelatedArticlesPage!
+
+  """
+  Hybrid text + semantic search over the last 48h of articles. Headline-only results, hydrate ids via articlesForTopicsByIds. Capped at 25 results.
+  """
+  searchNews(
+    """Max results, clamped to 25."""
+    limit: Int
+    query: String!
+  ): [NewsSearchHit!]!
+  searchPublishers(
+    """Cursor to fetch items after"""
+    after: String
+
+    """Number of items to fetch"""
+    first: Int = 20
+    query: String!
+  ): SearchPublishersResponse!
+
+  """
+  A country's precomputed, cluster-deduplicated top headlines (each big story appears once), paged over the materialized edition. A null or "GLOBAL" countryCode spans all countries. windowHours ranks the stories most covered in the last 6, 12, 24 (default) or 48 hours. Falls back to the live path (editionBuiltAt: null) when no edition exists yet.
+  """
+  topHeadlinesForCountry(
+    """Cursor to fetch items after"""
+    after: String
+
+    """ISO country code, or null/"GLOBAL" for all countries"""
+    countryCode: String
+
+    """Number of items to fetch"""
+    first: Int = 20
+
+    """
+    Rank by coverage in the last 6, 12, 24 or 48 hours. Any other value is BAD_WINDOW.
+    """
+    windowHours: Int = 24
+  ): TopHeadlinesForCountryResponse!
+
+  """
+  Edition headlines for a country (null or "GLOBAL" spans all), optionally filtered to canonical topics (OR, descendants included), with per-topic facets over the unfiltered edition. No edition: the live fallback page (editionBuiltAt null) and no facets, or no headlines when filtered. A filter that cannot apply answers no headlines and unavailableReason.
+  """
+  worldHeadlines(after: String, canonicalTopicIds: [ID!], countryCode: String, first: Int = 20, windowHours: Int = 24): WorldHeadlinesResponse!
+}
+
+"""
+Country and language counts over the related set. Each dimension is counted with the filter of the other dimension applied.
+"""
+type RelatedArticleFacets {
+  countries: [RelatedFacetCount!]!
+  languages: [RelatedFacetCount!]!
+}
+
+"""
+Anonymous, ephemeral reader signals used to order the RELEVANCE mode. Never persisted, never cached, never linked to a user.
+"""
+input RelatedArticlesContextInput {
+  """App-UI language BASE tag (`zh`, not `zh-Hans`)."""
+  appLanguageBase: String
+
+  """Home country, ISO alpha-3."""
+  homeCountryAlpha3: String
+
+  """The reader's other countries, ISO alpha-3, ranked weight-desc."""
+  otherCountriesAlpha3: [String!]
+
+  """Countries whose sources the reader explicitly prefers, ISO alpha-3."""
+  preferredCountriesAlpha3: [String!]
+
+  """Publications the reader explicitly prefers, normalized names."""
+  preferredPublications: [String!]
+
+  """
+  Publications the reader subscribes to, normalized names. Ranked above preferredPublications.
+  """
+  subscribedPublications: [String!]
+}
+
+"""
+One page of sibling coverage for an article, already ordered server-side.
+"""
+type RelatedArticlesPage {
+  articles: [ArticleSummary!]!
+
+  """
+  Country and language chip counts over the whole related set, not just this page.
+  """
+  facets: RelatedArticleFacets!
+  pageInfo: CursorPageInfo!
+
+  """
+  The `after` cursor did not resolve and this page restarts at index 0. Clients must REPLACE their list, not append.
+  """
+  restarted: Boolean!
+}
+
+"""One chip for the related-coverage filters, with its row count."""
+type RelatedFacetCount {
+  """
+  Country as ISO alpha-3 (or GLOBAL for international sources), or a base language tag.
+  """
+  code: String!
+  count: Int!
+}
+
+"""
+Ordering for relatedArticlesPage. RELEVANCE ranks the reader's publications and language; the two date modes are flat.
+"""
+enum RelatedSortMode {
+  """
+  Flat publish-date descending. Undated rows sort last here too, so NEWEST is not the exact reverse of OLDEST.
+  """
+  NEWEST
+
+  """Flat publish-date ascending. Undated rows sort last."""
+  OLDEST
+
+  """
+  Default. Subscribed publications, then preferred publications, then the reader app language, then newest first. Country is not a key. The only mode that consults the reader context.
+  """
+  RELEVANCE
+}
+
+type SearchPublishersResponse {
+  pageInfo: CursorPageInfo!
+  publishers: [PublisherSearchHit!]!
+}
+
+"""
+One top-headline slot: the representative article plus its cluster metadata (stableClusterId, clusterSize). Both are null/0 for an unclustered singleton.
+"""
+type TopHeadline {
+  article: NewsArticle!
+
+  """Global cluster size across the clustering window; 0 for a singleton."""
+  clusterSize: Int!
+
+  """
+  Stable cross-run identity of this headline's cluster; null for a singleton.
+  """
+  stableClusterId: String
+}
+
+type TopHeadlinesForCountryResponse {
+  articles: [NewsArticle!]! @deprecated(reason: "Use headlines")
+  editionBuiltAt: DateTime
+  headlines: [TopHeadline!]!
+  pageInfo: CursorPageInfo!
+}
+
+"""
+Optional top-headlines block. Up to 6 scopes; limitPerScope capped at 25.
+"""
+input TopHeadlinesInput {
+  limitPerScope: Int! = 10
+  scopes: [HeadlineScopeInput!]!
+}
+
+type TopicArticleIdsResult {
+  articleIds: [ID!]!
+  hasNextPage: Boolean!
+  nextCursor: String
+  topicText: String!
+}
+
+type WorldHeadlinesResponse {
+  editionBuiltAt: DateTime
+
+  """
+  Story counts per canonical topic over the whole edition (ignores the filter), descendants rolled up, nonzero only.
+  """
+  facets: [CanonicalTopicFacet!]!
+  headlines: [TopHeadline!]!
+  pageInfo: CursorPageInfo!
+
+  """
+  Null on a normal answer. When a topic filter was sent but cannot apply, headlines is empty and this says why: NO_EDITION, NO_CANONICAL_TOPICS or NO_TOPIC_LINKS. The unfiltered list is never served for a filtered request.
+  """
+  unavailableReason: String
+}

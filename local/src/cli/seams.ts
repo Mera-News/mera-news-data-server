@@ -1,6 +1,7 @@
 import type { Embedder } from '../embed/embedder.ts';
 import type { Store } from '../store/store.ts';
-import { CliError } from './errors.ts';
+import { searchArticles } from '../serve/retrieval.ts';
+import { runServe } from '../serve/run.ts';
 
 /** What `search` needs from src/serve/retrieval.ts. */
 export interface SearchHit {
@@ -24,37 +25,14 @@ export type ServeFn = (options: {
   embedder: Embedder;
   port?: number;
   every?: number;
+  ingest?: () => Promise<unknown>;
   onEvent: (event: Record<string, unknown>) => void;
 }) => Promise<void>;
 
-// The import sits in a try block so the bundle still builds while the file is missing
-// (esbuild turns an unresolved import in a try into a warning), and the path is ignored by
-// the typecheck for the same reason.
 export async function loadSearch(): Promise<SearchFn> {
-  try {
-    // @ts-ignore the module may not exist yet
-    const mod = await import('../serve/retrieval.ts');
-    return mod.searchArticles as SearchFn;
-  } catch (error) {
-    throw notBuilt('search', error);
-  }
+  return searchArticles;
 }
 
 export async function loadServe(): Promise<ServeFn> {
-  try {
-    // @ts-ignore the module may not exist yet
-    const mod = await import('../serve/run.ts');
-    return mod.runServe as ServeFn;
-  } catch (error) {
-    throw notBuilt('serve', error);
-  }
-}
-
-// Only a missing file counts as "not built"; a real failure inside the module must surface.
-function notBuilt(what: string, error: unknown): Error {
-  const e = error as { code?: string; message?: string };
-  if (e?.code === 'ERR_MODULE_NOT_FOUND' || e?.code === 'MODULE_NOT_FOUND') {
-    return new CliError('not_built_yet', `The ${what} command is not built in this version yet.`);
-  }
-  return error as Error;
+  return runServe;
 }

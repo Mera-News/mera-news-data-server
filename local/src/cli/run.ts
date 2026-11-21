@@ -335,7 +335,7 @@ function feedsList(ctx: Ctx, store: Store): Result {
     status: f.last_fetch_status ?? 'not_fetched',
     reason: f.last_fetch_error,
     // The store keeps the time of the last fetch, so a feed whose last fetch failed has no known success time.
-    lastSuccess: f.last_fetch_status === 'ok' || f.last_fetch_status === 'not_modified' ? f.last_fetch_at : null,
+    lastSuccess: f.last_ok_at,
   }));
   const text = feeds.length === 0 ? 'No feeds.' : feeds.map((f) => `${f.url}  ${f.status}${f.reason ? ` (${f.reason})` : ''}  last success ${f.lastSuccess ?? 'never'}`).join('\n');
   return { data: { feeds }, text };
@@ -421,14 +421,14 @@ function status(_ctx: Ctx, store: Store): Result {
   else if (failedFeeds.length > 0) next = `${CMD} feeds list --failed`;
   else next = `${CMD} ingest`;
 
-  const failed = failedFeeds.map((f) => ({ feed: f.feed_url, host: new URL(f.feed_url).host, reason: f.last_fetch_error ?? f.last_fetch_status }));
+  const failed = failedFeeds.map((f) => ({ feed: f.feed_url, host: new URL(f.feed_url).host, reason: f.last_fetch_error ?? f.last_fetch_status, lastSuccess: f.last_ok_at }));
   const head =
     feeds.length === 0
       ? 'No feeds yet.'
       : !last
         ? `${feeds.length.toLocaleString('en-US')} feeds, nothing fetched yet.`
         : `${failedFeeds.length === 0 ? 'Working' : okFeeds.length === 0 ? 'Not working' : 'Partly working'}. ${articles.toLocaleString('en-US')} articles from ${okFeeds.length} of ${feeds.length} feeds. Last fetch ${ago(last)}.`;
-  const text = [head, ...failed.map((f) => `${f.host} (${f.reason})`), ...problems.map((p) => p.message), `Next: ${next}`].join('\n');
+  const text = [head, ...failed.map((f) => `${f.host} (${String(f.reason).replace(/\.$/, '')}), last worked ${f.lastSuccess ? ago(f.lastSuccess) : 'never'}`), ...problems.map((p) => p.message), `Next: ${next}`].join('\n');
   return { data: { articles, feeds: { total: feeds.length, ok: okFeeds.length, failed: failed.length }, lastIngestAt: last, failed, problems, next }, text };
 }
 
@@ -470,8 +470,15 @@ async function reembed(ctx: Ctx, store: Store): Promise<Result> {
 
 async function serve(ctx: Ctx, store: Store): Promise<Result> {
   const serveFn = ctx.deps.serve ?? (await loadServe());
-  const embedder = await buildEmbedder(embedderRequest(ctx));
-  await serveFn({ store, embedder, port: whole('port', ctx.values.port), every: whole('every', ctx.values.every), onEvent: ctx.progress });
+  const embedder = await buildEmbedder(embedderRequest(ctx, { download: true }));
+  const every = whole('every', ctx.values.every);
+  const ingest = every
+    ? () => {
+        requireContact(store);
+        return runIngest({ store, dbPath: ctx.home.db, embedder, allowHosts: allowHostsOf(ctx.settings), onEvent: (e: IngestEvent) => ctx.progress({ ...e }) });
+      }
+    : undefined;
+  await serveFn({ store, embedder, port: whole('port', ctx.values.port), every, ingest, onEvent: ctx.progress });
   return { data: {}, text: 'Stopped.' };
 }
 

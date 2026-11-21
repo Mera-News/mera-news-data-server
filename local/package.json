@@ -5,24 +5,31 @@
   "description": "The news store on one SQLite file: ingest chosen feeds, search them, serve a pod",
   "license": "SEE LICENSE IN LICENSE",
   "type": "module",
+  "bin": {
+    "mera-news-local": "dist/cli.mjs"
+  },
   "engines": {
     "node": ">=24"
   },
   "scripts": {
+    "build": "esbuild src/cli/main.ts --bundle --platform=node --format=esm --target=node24 --packages=external --alias:@mera/shared=../libs/mera-shared/src --loader:.gql=text --banner:js='#!/usr/bin/env node' --outfile=dist/cli.mjs",
+    "prepare": "npm run build",
     "test": "node --import ./scripts/register.mjs --test test/",
     "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "4.3.2",
+    "cld3-asm": "4.0.0",
+    "graphql": "16.14.2",
+    "he": "2.0.0",
+    "rss-parser": "3.13.0",
+    "sqlite-vec": "0.1.9",
+    "string-strip-html": "13.7.7"
   },
   "devDependencies": {
     "@types/he": "1.2.3",
     "@types/node": "24.19.2",
     "esbuild": "0.28.2",
     "typescript": "7.0.2"
-  },
-  "dependencies": {
-    "@huggingface/transformers": "4.3.2",
-    "cld3-asm": "4.0.0",
-    "he": "2.0.0",
-    "rss-parser": "3.13.0",
-    "string-strip-html": "13.7.7"
   }
 }

@@ -12,9 +12,15 @@ const localParent = pathToFileURL(fileURLToPath(new URL('package.json', root))).
 const { transformSync } = createRequire(import.meta.url)('esbuild');
 
 const outside = (url) => url.startsWith('file:') && !fileURLToPath(url).startsWith(rootPath);
+// The full server's own alias for its shared library, as the bundle maps it.
+const SHARED_ALIAS = '@mera/shared/';
+const sharedRoot = new URL('../libs/mera-shared/src/', root);
 
 registerHooks({
   resolve(specifier, context, next) {
+    if (specifier.startsWith(SHARED_ALIAS)) {
+      return next(new URL(`${specifier.slice(SHARED_ALIAS.length)}.ts`, sharedRoot).href, context);
+    }
     const relative = specifier.startsWith('./') || specifier.startsWith('../');
     if (relative && !/\.[cm]?[jt]s$|\.json$/.test(specifier) && context.parentURL?.startsWith('file:')) {
       for (const candidate of [`${specifier}.ts`, `${specifier}/index.ts`]) {
@@ -32,6 +38,9 @@ registerHooks({
     }
   },
   load(url, context, next) {
+    if (url.endsWith('.gql')) {
+      return { format: 'module', source: `export default ${JSON.stringify(readFileSync(fileURLToPath(url), 'utf8'))};`, shortCircuit: true };
+    }
     if (url.endsWith('.ts') && outside(url)) {
       const path = fileURLToPath(url);
       const { code } = transformSync(readFileSync(path, 'utf8'), {

@@ -31,7 +31,7 @@ const TEXTS = [
 ];
 
 describe('language detection, against the full server', () => {
-  it('gives the same answer on every text', { skip: rootInstalled ? false : 'run npm ci at the repository root to compare' }, async () => {
+  it('gives the same answer on every text', { skip: rootInstalled || process.env.REQUIRE_PARITY === '1' ? false : 'run npm ci at the repository root to compare' }, async () => {
     const { LanguageDetectionService } = await import(fullServer.href);
     const theirs = new LanguageDetectionService();
     await theirs.onModuleInit();

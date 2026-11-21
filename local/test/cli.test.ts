@@ -16,7 +16,6 @@ after(() => rmSync(root, { recursive: true, force: true }));
 let n = 0;
 const newHome = () => join(root, `home-${++n}`);
 const FIXTURE = new URL('./fixtures/cli/feeds.json', import.meta.url).pathname;
-const SERVE_BUILT = existsSync(new URL('../src/serve/run.ts', import.meta.url));
 
 const rss = (items: { title: string; link: string; description: string; pubDate: string }[]) =>
   `<?xml version="1.0"?><rss version="2.0"><channel><title>T</title>${items
@@ -169,8 +168,45 @@ describe('refusals', () => {
     assert.equal(dims.code, 2);
   });
 
-  it('serve answers not_built_yet until the server module exists', { skip: SERVE_BUILT }, async () => {
-    expectRefusal(await cli(newHome(), ['serve']), 'not_built_yet', 1);
+  it('serve answers the pod operations on 127.0.0.1 and stops on a signal', async () => {
+    const home = newHome();
+    await cli(home, ['config', 'set', 'contact', 'reader@example.test']);
+    await cli(home, ['config', 'set', 'feeds.allowHosts', new URL(base).host]);
+    await cli(home, ['feeds', 'add', `${base}/ok.xml`]);
+    await cli(home, ['ingest']);
+    const port = await new Promise<number>((resolve) => {
+      const probe = createServer().listen(0, '127.0.0.1', () => {
+        const p = (probe.address() as AddressInfo).port;
+        probe.close(() => resolve(p));
+      });
+    });
+    const clean = { ...process.env };
+    delete clean.MERA_NEWS_LOCAL_HOME;
+    const child = spawn(process.execPath, ['--import', './scripts/register.mjs', 'src/cli/main.ts', '--home', home, 'serve', '--port', String(port)], {
+      cwd: new URL('..', import.meta.url).pathname,
+      env: { ...clean, ...FAKE(8) },
+    });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        let err = '';
+        child.stderr.on('data', (c) => {
+          err += c;
+          if (err.includes('"serve_start"')) resolve();
+        });
+        child.once('exit', () => reject(new Error(`serve exited: ${err}`)));
+      });
+      const res = await fetch(`http://127.0.0.1:${port}/graphql`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ query: '{ searchNews(query: "Lighthouse", limit: 3) { _id title_en } newsServerStatus { lastArticleAt } }' }),
+      });
+      const body = (await res.json()) as { data: { searchNews: { title_en: string }[]; newsServerStatus: { lastArticleAt: string | null } } };
+      assert.equal(body.data.searchNews[0]!.title_en, 'Lighthouse reopens to visitors after three years of work');
+      assert.ok(body.data.newsServerStatus.lastArticleAt);
+    } finally {
+      child.kill('SIGTERM');
+      await new Promise((resolve) => child.once('exit', resolve));
+    }
   });
 });
 
@@ -229,7 +265,7 @@ describe('ingest and status', () => {
     const status = await cli(home, ['status']);
     assert.deepEqual(status.json.feeds, { total: 2, ok: 1, failed: 1 });
     assert.equal(status.json.next, 'mera-news-local feeds list --failed');
-    assert.match((await inProcess(home, ['status'], {}, true)).stdout, /^Partly working\. 3 articles from 1 of 2 feeds\..*\n127\.0\.0\.1:\d+ \(.+\)\n/s);
+    assert.match((await inProcess(home, ['status'], {}, true)).stdout, /^Partly working\. 3 articles from 1 of 2 feeds\..*\n127\.0\.0\.1:\d+ \(HTTP 404\), last worked never\n/s);
     const failed = await cli(home, ['feeds', 'list', '--failed']);
     assert.deepEqual(failed.json.feeds.map((f: { url: string }) => f.url), [`${base}/missing.xml`]);
   });
