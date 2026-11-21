@@ -1,0 +1,19 @@
+{
+  "name": "mera-news-local",
+  "version": "0.0.1",
+  "private": true,
+  "description": "The news store on one SQLite file: ingest chosen feeds, search them, serve a pod",
+  "license": "SEE LICENSE IN LICENSE",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "test": "node --test test/",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "typescript": "7.0.2"
+  }
+}
