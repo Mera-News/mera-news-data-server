@@ -1,11 +1,187 @@
 # Run your own news data server
 
-This guide takes you from nothing to a news server that reads the RSS feeds you choose, stores
+Mera News Self-Hosted reads the RSS feeds you choose and answers questions about their articles.
+There are two ways to run it:
+
+- **The one-computer setup**, for one person and 10 to 20 feeds: one program and one file on your
+  computer. No database server, no Docker, no account and no key.
+- **The server setup**, for more feeds or more people: a worker and a news API with MongoDB Atlas
+  and Redis (from "The server setup" below).
+
+Both read feeds that publishers publish. Neither crawls websites, summarises articles or keeps
+reader accounts.
+
+## The one-computer setup
+
+`mera-news-local` keeps everything in one SQLite file: the feeds, their articles, a vector for each
+article and a text index. The embedding model runs inside the program. Two things still come from
+the internet: the feeds themselves, and a one-time download of the model (about 260 MB).
+
+### What this setup does not do
+
+- It is for one person.
+- It runs on macOS and Linux. Windows is not checked.
+- It does not translate. The model matches across languages, and your own AI can read the rest.
+- Copies of the same article are merged, but different articles about the same event are not
+  grouped into one story.
+- Picks for a pod cover articles published in the last 48 hours before the last fetch.
+- Nothing expires until you prune it.
+
+### What you need
+
+- Node.js 24 and npm.
+- git.
+- About 1.5 GB of free memory while articles are fetched, and about 300 MB of disk for the model.
+
+### Install
+
+```bash
+git clone https://github.com/Mera-News/mera-news-data-server.git ~/mera-news-data-server
+cd ~/mera-news-data-server/local
+npm ci
+npm install --global .
+```
+
+`npm ci` installs only this folder's packages and builds the program. `npm install --global .`
+puts the `mera-news-local` command on your path. Everything it stores lives in
+`~/.mera-news-local`: `news.db`, the model files in `models/`, and `settings.json`. To keep it
+elsewhere, add `--home <folder>` to every command or set `MERA_NEWS_LOCAL_HOME`.
+
+### Say who you are
+
+Publishers ask to know who reads their feeds, so every request carries a contact. Fetching refuses
+to start until you set one:
+
+```bash
+mera-news-local config set contact you@example.com
+```
+
+A website address works too.
+
+### Download the model
+
+```bash
+mera-news-local model download
+```
+
+The default model is Jina's v5 nano retrieval model, the one Mera's own servers use. Its weights
+are licensed CC BY-NC 4.0: free for non-commercial use only. The command says so when it finishes.
+To use an MIT-licensed model instead, before your first fetch:
+
+```bash
+mera-news-local config set embedder.model e5-small
+mera-news-local model download
+```
+
+The e5-small files are a converted build that carries no licence tag of its own; the licence is
+that of the model it was built from, `intfloat/multilingual-e5-small` (MIT). Changing the model
+later means `mera-news-local reembed --model <name>`, which rebuilds every vector.
+
+### Choose your feeds
+
+The public feed list is at
+[mera-news-rss-feeds](https://github.com/Mera-News/mera-news-rss-feeds), and a copy ships with
+the program. Load 20 sources from one country or one language:
+
+```bash
+mera-news-local feeds load --only country:GBR
+```
+
+```bash
+mera-news-local feeds load --only language:es
+```
+
+From the list, `feeds load` takes the first working feed of each publication, in the list's own
+order, up to 20. `--limit 10` takes fewer. `--only` can repeat. `--only all` loads the whole list
+and warns you first: this setup is not built for that many.
+
+To add one feed you know, or your own list in the format the server setup uses (step 10):
+
+```bash
+mera-news-local feeds add https://example.com/rss.xml
+```
+
+```bash
+mera-news-local feeds load --file my-feeds.json --only all
+```
+
+### Fetch the articles
+
+```bash
+mera-news-local ingest
+```
+
+It fetches each feed once, one request per site at a time and a second apart, and asks only for
+what changed since the last time. The first run also downloads the model if it is missing. A run
+takes a few minutes for 20 feeds, and running it again is safe.
+
+If you are an AI agent with a shell that times out, run it in the background and poll:
+
+```bash
+mera-news-local ingest > ~/mera-news-local-ingest.log 2>&1 &
+mera-news-local status
+```
+
+`status` says whether it is working and what to do next, and lists every feed that failed with
+the reason and when it last worked:
+
+```bash
+mera-news-local feeds list --failed
+```
+
+### Search
+
+```bash
+mera-news-local search "electric buses"
+```
+
+It matches the words and the meaning, in any language the feeds use. Every command prints JSON
+when its output goes to another program, or with `--json`, and short text in a terminal. Exit
+codes: 0 done, 1 an error, 2 something to do first, 3 partly done (some feeds failed). A refusal
+says what to run next.
+
+### Serve a pod
+
+```bash
+mera-news-local serve
+```
+
+It answers the same GraphQL a pod sends to the server setup, on `http://127.0.0.1:3002/graphql`,
+for programs on this computer only. It needs no key: it answers only `127.0.0.1` and `localhost`
+and refuses any request from a web page. In the pod's `pod.json`, set `dataServer.url` to
+`http://127.0.0.1:3002` and leave `dataApiKey` unset.
+
+To fetch new articles while it serves, every hour for example:
+
+```bash
+mera-news-local serve --every 60
+```
+
+Only one fetch writes at a time; a second `ingest` while one runs stops with a message naming the
+running one.
+
+### Keep it small
+
+```bash
+mera-news-local prune --older-than 30
+```
+
+This deletes articles published more than 30 days before the last fetch. An article once stored
+never comes back after a prune. `status` notes when you pass 50 feeds; for more than that, the
+server setup fits better.
+
+### How articles are read
+
+Which image an article gets, and which text stands in when a feed item has no description, follow
+the server setup's rules. Those rules are a copy here, pinned by tests on sample feeds but not
+checked against the server's own code, which cannot be loaded outside it. Language detection is a
+copy too, and that one is checked against the server's on every change.
+
+## The server setup
+
+This part takes you from nothing to a news server that reads the RSS feeds you choose, stores
 their articles in your own MongoDB database, and answers topic queries over a GraphQL API. It
 works on a laptop and on a cloud machine: the steps are the same.
-
-The server reads feeds that publishers publish. It does not crawl websites, does not summarise
-articles, and keeps no reader accounts.
 
 Every command below is meant to be copied as it is. The guide keeps the code in
 `~/mera-news-data-server`. Run each block in one terminal opened in that folder, unless the block
