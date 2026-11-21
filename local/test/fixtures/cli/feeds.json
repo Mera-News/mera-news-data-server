@@ -1,0 +1,19 @@
+{
+  "GBR": [
+    {
+      "publication_name": "Harbour Gazette",
+      "publication_website_uri": "https://harbour.example.test/",
+      "publication_rss_feed_uris": [{ "uri": "https://harbour.example.test/feed.xml", "language_code": "en-GB" }]
+    }
+  ],
+  "JPN": [
+    {
+      "publication_name": "Tokyo News",
+      "publication_website_uri": "https://tokyo.example.test/",
+      "publication_rss_feed_uris": [
+        { "uri": "https://tokyo.example.test/feed.xml", "language_code": "ja" },
+        { "uri": "https://tokyo.example.test/en.xml", "language_code": "en" }
+      ]
+    }
+  ]
+}
