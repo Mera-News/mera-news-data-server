@@ -1,0 +1,65 @@
+name: One-computer setup
+
+# Runs when the local folder, or a file of the full server it copies or imports,
+# changes. The first job installs nothing but the local folder, as a person does.
+on:
+  push:
+    paths:
+      - local/**
+      - libs/mera-shared/src/url/**
+      - libs/mera-shared/src/config/env-choice.ts
+      - apps/mera-server-async/src/utils/text-sanitizer.ts
+      - apps/mera-server-async/src/modules/shared-utilities/language-detection/**
+      - apps/mera-server-news-api/src/schema.gql
+      - apps/mera-server-news-api/src/query-limits.ts
+      - apps/mera-server-news-api/src/modules/client-documents.ts
+      - .github/workflows/local.yml
+  workflow_dispatch:
+
+jobs:
+  plain-clone:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: local
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: local/package-lock.json
+      # npm ci also builds dist/cli.mjs (the prepare script).
+      - run: npm ci
+      - name: Dependency licences
+        run: node ../scripts/check-licenses.mjs .
+      # Includes the CLI suite (about a minute of child processes) and the sqlite-vec,
+      # FTS5 and extension-loading checks on Linux.
+      - run: npm test
+      - name: The built command runs
+        run: |
+          home="$(mktemp -d)"
+          node dist/cli.mjs status --json --home "$home" | tee status.json
+          grep -q '"next":"mera-news-local feeds load' status.json
+
+  against-the-full-server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            local/package-lock.json
+      - run: npm ci
+      - run: npm ci
+        working-directory: local
+      # With the full server installed, the language detection is compared with its own.
+      - run: node --import ./scripts/register.mjs --test test/parity.test.ts test/contract.test.ts
+        working-directory: local
+        env:
+          REQUIRE_PARITY: '1'
+      - run: npx tsc -p tsconfig.json
+        working-directory: local
