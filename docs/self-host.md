@@ -24,7 +24,7 @@ the internet: the feeds themselves, and a one-time download of the model (about 
 - It does not translate. The model matches across languages, and your own AI can read the rest.
 - Copies of the same article are merged, but different articles about the same event are not
   grouped into one story.
-- Picks for a pod cover articles published in the last 48 hours before the last fetch.
+- Picks for a pod cover articles published in the last 48 hours.
 - Nothing expires until you prune it.
 
 ### What you need
@@ -95,7 +95,8 @@ From the list, `feeds load` takes the first working feed of each publication, in
 order, up to 20. `--limit 10` takes fewer. `--only` can repeat. `--only all` loads the whole list
 and warns you first: this setup is not built for that many.
 
-To add one feed you know, or your own list in the format the server setup uses (step 10):
+To add one feed you know, or your own list in the format the server setup uses (step 10). A feed
+added by its address alone takes its name and language from the feed itself at the first fetch:
 
 ```bash
 mera-news-local feeds add https://example.com/rss.xml
@@ -167,8 +168,9 @@ mera-news-local prune --older-than 30
 ```
 
 This deletes articles published more than 30 days before the last fetch. An article once stored
-never comes back after a prune. `status` notes when you pass 50 feeds; for more than that, the
-server setup fits better.
+never comes back after a prune.
+
+This setup is meant for 10 to 20 feeds. For more than that, use the server setup below.
 
 ### How articles are read
 
