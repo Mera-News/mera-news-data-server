@@ -58,8 +58,10 @@ export interface FetchRecord {
 }
 
 export interface ArticleInput {
-  /** Already normalised; also the fingerprint that keeps it from ever coming back. */
+  /** The address as the feed gives it, trimmed. */
   articleUrl: string;
+  /** Scheme- and tracking-independent key of the address; once seen it never comes back. */
+  fingerprint: string;
   copyKeys: string[];
   title: string;
   description: string | null;
@@ -284,9 +286,12 @@ export class Store {
   ): { id: string; storyKey: string } | null {
     const seen = this.db
       .prepare('INSERT INTO fingerprints (key, first_seen) VALUES (?, ?) ON CONFLICT DO NOTHING')
-      .run(input.articleUrl, createdAt);
+      .run(input.fingerprint, createdAt);
     if (seen.changes === 0) return null;
 
+    // A different address can still be stored under the same unique column; treat it as seen.
+    const sameUrl = this.db.prepare('SELECT 1 FROM articles WHERE article_url = ?').get(input.articleUrl);
+    if (sameUrl) return null;
     const id = newId(new Date(createdAt));
     const keys = [...new Set(input.copyKeys)];
     let storyKey = id;

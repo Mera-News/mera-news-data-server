@@ -25,6 +25,7 @@ const feedInput = (url: string) => ({
 });
 const item = (url: string, overrides: Partial<ArticleInput> = {}): ArticleInput => ({
   articleUrl: url,
+  fingerprint: `url:${url}`,
   copyKeys: [],
   title: `Headline for ${url}`,
   description: 'A description',
@@ -96,11 +97,20 @@ describe('the news file', () => {
     store.close();
   });
 
+  it('treats two addresses with one fingerprint as the same article', () => {
+    const feed = store.upsertFeed(feedInput('https://harbour.example.test/rss')).id;
+    store.writeFeedFetch(feed, [item('https://harbour.example.test/a', { fingerprint: 'url:harbour/a' })], ok(), null);
+    const again = store.writeFeedFetch(feed, [item('http://HARBOUR.example.test/a?utm_source=x', { fingerprint: 'url:harbour/a' })], ok(), null);
+    assert.equal(again.duplicates, 1);
+    assert.equal(store.articleCount(), 1);
+    store.close();
+  });
+
   it('never takes an address back after a prune', () => {
     const feed = store.upsertFeed(feedInput('https://harbour.example.test/rss')).id;
     store.writeFeedFetch(feed, [item('https://harbour.example.test/old', { pubDate: '2026-01-01T00:00:00.000Z' })], ok(), null);
     assert.equal(store.prune('2026-02-01T00:00:00.000Z'), 1);
-    const again = store.writeFeedFetch(feed, [item('https://harbour.example.test/old')], ok(), null);
+    const again = store.writeFeedFetch(feed, [item('https://harbour.example.test/old', { pubDate: new Date().toISOString() })], ok(), null);
     assert.equal(again.inserted.length, 0);
     assert.equal(store.articleCount(), 0);
     store.close();
@@ -240,8 +250,7 @@ describe('publish dates', () => {
   it('clamps a date in the future to the first-seen time', () => {
     assert.equal(normalizePubDate('2027-01-01T00:00:00Z', seen), seen.toISOString());
   });
-  it('skips an item older than the ingest cutoff, as the full server does', () => {
-    assert.equal(normalizePubDate('2026-11-10T00:00:00Z', seen), null);
-    assert.equal(normalizePubDate('2026-11-15T00:00:00Z', seen), '2026-11-15T00:00:00.000Z');
+  it('keeps an item of any age', () => {
+    assert.equal(normalizePubDate('2019-03-01T00:00:00Z', seen), '2019-03-01T00:00:00.000Z');
   });
 });
