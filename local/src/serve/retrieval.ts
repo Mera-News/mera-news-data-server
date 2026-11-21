@@ -92,13 +92,15 @@ interface ArticleRow {
 
 export function articleRows(store: Store, ids: string[]): Map<string, ArticleRow> {
   const get = store.db.prepare(
-    `SELECT a.id, a.title, a.article_url, a.pub_date, a.language_code, a.image_url, a.story_key, f.publication_name, f.country_code
+    // As the full server answers: the article's detected language, else the feed's declared one.
+    `SELECT a.id, a.title, a.article_url, a.pub_date, COALESCE(a.language_code, f.feed_language_code) AS language_code,
+       a.image_url, a.story_key, f.publication_name, f.feed_url, f.country_code
      FROM articles a JOIN feeds f ON f.id = a.feed_id WHERE a.id = ?`,
   );
   const rows = new Map<string, ArticleRow>();
   for (const id of ids) {
-    const row = get.get(id) as ArticleRow | undefined;
-    if (row) rows.set(id, row);
+    const row = get.get(id) as (ArticleRow & { feed_url: string }) | undefined;
+    if (row) rows.set(id, { ...row, publication_name: row.publication_name || new URL(row.feed_url).hostname });
   }
   return rows;
 }

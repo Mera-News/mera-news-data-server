@@ -255,10 +255,12 @@ export class Store {
         | { id: string }
         | undefined;
       if (found) {
+        // A repeat without a name or language keeps the ones already stored.
         this.db
           .prepare(
-            `UPDATE feeds SET publisher_id = ?, publication_name = ?, publication_url = ?, country_code = ?,
-               feed_language_code = ?, updated_at = ? WHERE id = ?`,
+            `UPDATE feeds SET publisher_id = ?, publication_name = COALESCE(NULLIF(?, ''), publication_name),
+               publication_url = COALESCE(?, publication_url), country_code = COALESCE(?, country_code),
+               feed_language_code = COALESCE(?, feed_language_code), updated_at = ? WHERE id = ?`,
           )
           .run(publisherId, input.publicationName, input.publicationUrl, input.countryCode, input.feedLanguageCode, at, found.id);
         return { id: found.id, created: false };
@@ -271,6 +273,34 @@ export class Store {
         )
         .run(id, publisherId, input.feedUrl, input.publicationName, input.publicationUrl, input.countryCode, input.feedLanguageCode, at, at);
       return { id, created: true };
+    });
+  }
+
+  /**
+   * Fills what a feed added by its address alone lacks, from the feed itself: its title as the
+   * publication name, and its declared language. A name or language already given is kept.
+   */
+  fillFeedDetails(feedId: string, details: { title: string | null; language: string | null }): void {
+    this.transaction(() => {
+      const feed = this.db.prepare('SELECT publication_name, publisher_id, feed_url FROM feeds WHERE id = ?').get(feedId) as
+        | { publication_name: string; publisher_id: string; feed_url: string }
+        | undefined;
+      if (!feed) return;
+      const title = details.title?.trim();
+      if (!feed.publication_name && title) {
+        this.db.prepare('UPDATE feeds SET publication_name = ? WHERE id = ?').run(title, feedId);
+        // The publisher was named after the host as a stand-in; take the title unless another has it.
+        const host = new URL(feed.feed_url).hostname;
+        try {
+          this.db.prepare('UPDATE publishers SET name = ? WHERE id = ? AND name = ?').run(title, feed.publisher_id, host);
+        } catch {
+          // Another publisher of that country already has this name; keep the stand-in.
+        }
+      }
+      const language = details.language?.trim();
+      if (language) {
+        this.db.prepare('UPDATE feeds SET feed_language_code = ? WHERE id = ? AND feed_language_code IS NULL').run(language, feedId);
+      }
     });
   }
 

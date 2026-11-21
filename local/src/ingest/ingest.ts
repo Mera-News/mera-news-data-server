@@ -113,6 +113,7 @@ export async function runIngest(options: IngestOptions): Promise<IngestSummary> 
           return { ...base, status: 'not_modified' };
         }
         const parsed = await parseFeed(answer.body, answer.contentType);
+        store.fillFeedDetails(feed.id, { title: parsed.title, language: parsed.language });
         const language = feedLanguage(detector, parsed.items, parsed.language ?? feed.feed_language_code);
         const candidates = parsed.items.map((item) => ({ item, fingerprint: articleUrlKey(item.link) }));
         const known = store.knownFingerprints(candidates.map((c) => c.fingerprint));

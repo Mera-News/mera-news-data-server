@@ -162,6 +162,25 @@ describe('the contract with the full server', () => {
     assert.deepEqual((await run('GetTopHeadlinesForCountry')).topHeadlinesForCountry.headlines, []);
   });
 
+  it("answers an article's feed language when the text gave none, as the full server does", async () => {
+    const feed = store.upsertFeed({
+      feedUrl: 'https://short.example.test/rss',
+      publicationName: '',
+      publicationUrl: null,
+      countryCode: 'GBR',
+      feedLanguageCode: 'en-gb',
+      publisher: { name: 'short.example.test', countryCode: 'GBR', websiteUrl: null },
+    });
+    const short = store.writeFeedFetch(
+      feed.id,
+      [{ articleUrl: 'https://short.example.test/1', fingerprint: 'url:short/1', copyKeys: [], title: 'Rates hold', description: null, imageUrl: null, languageCode: null, pubDate: new Date().toISOString(), vector: (await embedder.embedPassages(['Rates hold']))[0]! }],
+      { at: new Date().toISOString(), status: 'ok' },
+      null,
+    ).inserted[0]!.id;
+    const { result } = await runQuery(schema, { store, embedder }, { query: `{ articlesForTopicsByIds(articleIds: ["${short}"]) { articles { language_code publication_name } } }` });
+    assert.deepEqual(JSON.parse(JSON.stringify(result.data)), { articlesForTopicsByIds: { articles: [{ language_code: 'en-gb', publication_name: 'short.example.test' }] } });
+  });
+
   it('refuses a field the schema does not have, as the full server does', async () => {
     const { status, result } = await runQuery(schema, { store, embedder }, { query: '{ publicationDisplayNames { name } }' });
     assert.equal(status, 400);
@@ -169,10 +188,19 @@ describe('the contract with the full server', () => {
   });
 
   it('pages articlesForCountry with a cursor and refuses one it did not give out', async () => {
-    const { result } = await runQuery(schema, { store, embedder }, { query: '{ articlesForCountry(countryCode: "GLOBAL", first: 1) { pageInfo { endCursor hasNextPage } } }' });
-    const cursor = (result.data as any).articlesForCountry.pageInfo.endCursor;
-    const next = await runQuery(schema, { store, embedder }, { query: `{ articlesForCountry(first: 1, after: "${cursor}") { articles { _id } } }` });
-    assert.deepEqual((next.result.data as any).articlesForCountry.articles, []);
+    const seen: string[] = [];
+    let after: string | null = null;
+    for (let pages = 0; pages < 10; pages++) {
+      const { result } = await runQuery(schema, { store, embedder }, {
+        query: `{ articlesForCountry(countryCode: "GLOBAL", first: 1${after ? `, after: "${after}"` : ''}) { articles { _id } pageInfo { endCursor hasNextPage } } }`,
+      });
+      const page = (result.data as any).articlesForCountry;
+      seen.push(...page.articles.map((a: { _id: string }) => a._id));
+      if (!page.pageInfo.hasNextPage) break;
+      after = page.pageInfo.endCursor;
+    }
+    assert.equal(seen.length, store.articleCount());
+    assert.equal(new Set(seen).size, seen.length);
     const bad = await runQuery(schema, { store, embedder }, { query: '{ articlesForCountry(after: "nonsense") { articles { _id } } }' });
     assert.equal(bad.result.errors?.[0]?.extensions?.code, 'BAD_USER_INPUT');
   });

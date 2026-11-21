@@ -202,6 +202,34 @@ describe('ingest', () => {
     store.close();
   });
 
+  it('names a feed added by address alone after its own title, and keeps a name given', async () => {
+    serveFeed('/harbour.xml', HARBOUR);
+    serveFeed('/tokyo.xml', TOKYO);
+    const { store, path } = newStore();
+    const add = (url: string, name: string) =>
+      store.upsertFeed({ feedUrl: url, publicationName: name, publicationUrl: null, countryCode: null, feedLanguageCode: null, publisher: { name: name || '127.0.0.1', countryCode: null, websiteUrl: null } });
+    add(`${base}/harbour.xml`, '');
+    add(`${base}/tokyo.xml`, 'My Tokyo paper');
+    await ingest(store, path);
+    const names = Object.fromEntries(store.listFeeds().map((f) => [new URL(f.feed_url).pathname, f.publication_name]));
+    assert.deepEqual(names, { '/harbour.xml': 'Harbour Gazette', '/tokyo.xml': 'My Tokyo paper' });
+    add(`${base}/harbour.xml`, '');
+    assert.equal(store.listFeeds().find((f) => f.feed_url.endsWith('/harbour.xml'))!.publication_name, 'Harbour Gazette');
+    store.close();
+  });
+
+  it('takes the language a feed declares when none was given', async () => {
+    serveFeed('/tokyo.xml', TOKYO);
+    serveFeed('/short.xml', rss('Short', [{ title: 'Rates hold', link: 'https://short.example.test/1', pubDate: now() }], 'en-gb'));
+    const { store, path, feed } = newStore();
+    feed(`${base}/tokyo.xml`, null);
+    feed(`${base}/short.xml`, null);
+    await ingest(store, path);
+    const langs = Object.fromEntries(store.listFeeds().map((f) => [new URL(f.feed_url).pathname, f.feed_language_code]));
+    assert.deepEqual(langs, { '/tokyo.xml': 'ja', '/short.xml': 'en-gb' });
+    store.close();
+  });
+
   it('refuses a second writer while one holds the lock, naming its process', async () => {
     const { store, path, feed } = newStore();
     feed(`${base}/harbour.xml`);

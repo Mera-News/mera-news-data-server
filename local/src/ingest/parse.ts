@@ -25,6 +25,8 @@ export interface FeedItem {
 }
 
 export interface ParsedFeed {
+  /** The feed's own title, if it has one. */
+  title: string | null;
   /** The feed's declared language, if it has one. */
   language: string | null;
   items: FeedItem[];
@@ -116,5 +118,5 @@ export async function parseFeed(bytes: Uint8Array, contentType: string | null): 
       imageUrl: widestMedia(item.mediaContent) ?? item.enclosure?.url ?? widestMedia(item.mediaThumbnail) ?? null,
     });
   }
-  return { language: (feed as { language?: string }).language?.trim() || null, items, skipped };
+  return { title: sanitizeText(feed.title) || null, language: (feed as { language?: string }).language?.trim() || null, items, skipped };
 }

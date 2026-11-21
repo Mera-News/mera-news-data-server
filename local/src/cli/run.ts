@@ -232,7 +232,8 @@ async function feedsAdd(ctx: Ctx, args: string[]): Promise<Result> {
     throw new CliError('feed_url_invalid', 'The feed address must be a web address starting with http:// or https://.');
   }
   const countryCode = checkCountry(ctx.values.country);
-  const publicationName = ctx.values.name ?? host;
+  // Without a name, the first fetch takes the feed's own title; until then the publisher goes by the host.
+  const publicationName = ctx.values.name ?? '';
   return withStore(ctx, (store) => {
     const { created } = store.upsertFeed({
       feedUrl: url,
@@ -240,7 +241,7 @@ async function feedsAdd(ctx: Ctx, args: string[]): Promise<Result> {
       publicationUrl: null,
       countryCode,
       feedLanguageCode: ctx.values.language ?? null,
-      publisher: { name: publicationName, countryCode, websiteUrl: null },
+      publisher: { name: publicationName || host, countryCode, websiteUrl: null },
     });
     return { data: { feed: url, created }, text: `${created ? 'Added' : 'Updated'} ${url}.` };
   });
@@ -359,7 +360,7 @@ function feedsList(ctx: Ctx, store: Store): Result {
   const rows = store.listFeeds().filter((f) => !ctx.values.failed || failedStatus(f.last_fetch_status));
   const feeds = rows.map((f) => ({
     url: f.feed_url,
-    name: f.publication_name,
+    name: f.publication_name || new URL(f.feed_url).hostname,
     status: f.last_fetch_status ?? 'not_fetched',
     reason: f.last_fetch_error,
     // The store keeps the time of the last fetch, so a feed whose last fetch failed has no known success time.
