@@ -841,7 +841,7 @@ These are the definitions the worker creates, from
 
 A pod keeps your news profile on your own computer, reads this server on a schedule and keeps
 the stories that matter to you, for your own AI tools to use. Its guide is
-[Running your own pod](https://github.com/Mera-News/mera-news-pod/blob/dev/docs/self-hosting.md).
+[Running your own pod](https://github.com/Mera-News/mera-news-pod/blob/main/docs/self-hosting.md).
 
 A pod needs search, which the news API offers only with a key. Before you start the pod, set
 these in your `.env` in place of the open-mode lines, then restart the news API (step 11):
