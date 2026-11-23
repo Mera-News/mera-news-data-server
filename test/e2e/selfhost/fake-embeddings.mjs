@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
  * without a model. A text that mentions a story keyword gets that story's
  * fixed direction plus a little noise (about 0.99 related to its siblings).
  * A lone item (story null, matched by its own keywords) points away from every
- * story and from the other lone items, so clustering leaves it alone whatever
+ * story and from the other lone items, so no story's topic matches it whatever
  * text the server embeds. Any other text gets a direction of its own (about
  * 0.5 related to anything).
  */

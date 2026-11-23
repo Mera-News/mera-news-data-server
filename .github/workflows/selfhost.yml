@@ -42,9 +42,6 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.14"
       - name: Check the runner and the guide
         run: |
           node --test test/e2e/selfhost/*.test.mjs
@@ -64,7 +61,7 @@ jobs:
         env:
           SELFHOST_E2E: "true"
         run: npm run test:e2e -- --testPathPatterns selfhost
-      # Step 21 of the guide: switch the news API to a key, restart it, then run a pod against it.
+      # Step 20 of the guide: switch the news API to a key, restart it, then run a pod against it.
       # The pod repository is public, so it is cloned over https with no key.
       - name: Run a pod against it
         run: |

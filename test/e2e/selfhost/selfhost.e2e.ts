@@ -31,7 +31,6 @@ const fixtures = JSON.parse(
   readFileSync(resolve(__dirname, 'fixtures/stories.json'), 'utf8'),
 ) as {
   feeds: { slug: string; language: string }[];
-  stories: { id: string }[];
   items: Item[];
 };
 const linkOf = (item: Item) => `https://${item.feed}.example.test/${item.slug}`;
@@ -92,13 +91,6 @@ interface TopicAnswer {
       matchMeta: { vectorScore: number | null }[];
     }[];
   };
-}
-interface ClusterAnswer {
-  newsClusterForArticle: {
-    _id: string;
-    clusterSize: number;
-    articles: { articles: { article_url: string }[] };
-  } | null;
 }
 interface Health {
   status: number;
@@ -217,63 +209,28 @@ describe('the self-hosting guide, followed', () => {
     );
   });
 
-  it('groups each story into one cluster across publishers, leaves the loners alone, and relates siblings', async () => {
-    const cluster = `query ($id: ID!) {
-      newsClusterForArticle(articleId: $id) {
-        _id clusterSize
-        articles(first: 50) { articles { _id article_url } }
-      }
-    }`;
-    const publisherOf = (url: string) => new URL(url).hostname;
-    for (const story of fixtures.stories) {
-      const members = idsOf(story.id);
-      const answers = await Promise.all(
-        members.map((id) => graphql<ClusterAnswer>(cluster, { id })),
+  it('groups no stories: every fixture item has no cluster and no related articles', async () => {
+    for (const item of fixtures.items) {
+      const id = ids.get(linkOf(item));
+      const answer = await graphql<{
+        newsClusterForArticle: unknown;
+        relatedArticles: unknown[];
+      }>(
+        `query ($id: ID!) {
+          newsClusterForArticle(articleId: $id) { _id }
+          relatedArticles(articleId: $id) { _id }
+        }`,
+        { id },
       );
-      const clusters = answers.map((a) => a.data!.newsClusterForArticle!);
-      expect(new Set(clusters.map((c) => c._id)).size).toBe(1);
-      const urls = clusters[0].articles.articles.map((a) => a.article_url);
-      expect(new Set(urls.map(publisherOf)).size).toBeGreaterThanOrEqual(2);
+      expect(answer.errors).toBeUndefined();
+      expect(answer.data!.newsClusterForArticle).toBeNull();
+      expect(answer.data!.relatedArticles).toEqual([]);
     }
-    for (const loner of fixtures.items.filter((i) => i.story === null)) {
-      const answer = await graphql<ClusterAnswer>(cluster, {
-        id: ids.get(linkOf(loner)),
-      });
-      // The clustering job keeps a loner as a cluster of one by default
-      // (PERSIST_SINGLETON_CLUSTERS); without that, it has no cluster at all.
-      expect(answer.data!.newsClusterForArticle?.clusterSize ?? 1).toBe(1);
-    }
-    const first = fixtures.items.find((i) => i.story === 'buses')!;
-    const related = await graphql<{
-      relatedArticles: { _id: string; publication_name: string }[];
-    }>(
-      `
-        query ($id: ID!) {
-          relatedArticles(articleId: $id) {
-            _id
-            publication_name
-          }
-        }
-      `,
-      { id: ids.get(linkOf(first)) },
-    );
-    const siblings = related.data!.relatedArticles as {
-      _id: string;
-      publication_name: string;
-    }[];
-    expect(siblings.length).toBeGreaterThan(0);
-    for (const s of siblings) expect(idsOf('buses')).toContain(s._id);
-    const own = (await db
-      .collection('publication-source')
-      .findOne({ feed_url: `${publisher}/feeds/${first.feed}.xml` }))!;
-    expect(
-      siblings.some((s) => s.publication_name !== own.publication_name),
-    ).toBe(true);
   });
 
-  it('answers topHeadlinesForCountry', async () => {
+  it('answers topHeadlinesForCountry with headlines that stand alone', async () => {
     const answer = await graphql<{
-      topHeadlinesForCountry: { headlines: unknown[] };
+      topHeadlinesForCountry: { headlines: { clusterSize: number }[] };
     }>(`
       {
         topHeadlinesForCountry(countryCode: "GBR", first: 5) {
@@ -287,9 +244,11 @@ describe('the self-hosting guide, followed', () => {
       }
     `);
     expect(answer.errors).toBeUndefined();
-    expect(
-      answer.data!.topHeadlinesForCountry.headlines.length,
-    ).toBeGreaterThan(0);
+    const { headlines } = answer.data!.topHeadlinesForCountry;
+    expect(headlines.length).toBeGreaterThan(0);
+    expect(headlines.map((h) => h.clusterSize)).toEqual(
+      headlines.map(() => 0),
+    );
   });
 
   // From here on the install is damaged on purpose.

@@ -200,7 +200,7 @@ If you only want to try it, take these choices and follow the steps in order:
   against a stand-in that speaks Ollama's API, not against Ollama itself yet.
 - Translation: none, so articles stay in their own language (step 7).
 - News API: open, without a key, listening on 127.0.0.1 only (step 11). To run a pod on it
-  later, use a key instead: a pod needs search, which is not offered without one (step 21).
+  later, use a key instead: a pod needs search, which is not offered without one (step 20).
 
 ## 1. What runs
 
@@ -210,7 +210,15 @@ If you only want to try it, take these choices and follow the steps in order:
 | News API | Answers GraphQL queries: articles for a topic, headlines, related articles, search. | 3002 |
 | MongoDB Atlas | Stores articles, feeds and topics, and holds the two search indexes. | |
 | Redis | Holds the worker's job queues and a short-lived cache. | 6379 |
-| Clustering job (optional) | Groups articles that report the same story. A separate project (step 14). | |
+
+The server setup does not group different articles about the same event into stories.
+`relatedArticles` and `newsClusterForArticle` answer nothing, and every headline stands alone.
+
+The data model accepts story groups written by a job of your own, though this guide does not
+cover one. Each story is a row in `news-cluster`, with its member count in `clusterSize`, a
+`stableClusterId` that stays the same from run to run for a story of two or more, and the run's
+id in `clusteringRunId`. Each member is a row in `cluster-article-link` with the story's
+`clusterId`, the article's `articleId`, a `confidence` from 0 to 1 and the same `clusteringRunId`.
 
 ## 2. What you need
 
@@ -590,47 +598,20 @@ Set `VECTOR_MIN_SCORE` in `.env` between the two, then restart both services.
 | Job | When | What it does |
 |---|---|---|
 | `news-sync-fanout` | every hour at :00 | Fetches every feed that is due, then translates and embeds what arrives. |
-| clustering (step 14) | every hour at :10 | Groups articles into stories. |
-| `link-all-topics-to-clusters` | every hour at :20 | Links topics to stories, then builds the headline editions. |
-| `data-retention-sweep` | every hour at :00, with `{"skipOrphans": true}` | Deletes data older than the keep times in step 17. The hourly run skips the slower clean-up of leftover links. |
+| `link-all-topics-to-clusters` | every hour at :20 | Builds the headline editions, and links topics to stories if there are any. |
+| `data-retention-sweep` | every hour at :00, with `{"skipOrphans": true}` | Deletes data older than the keep times in step 16. The hourly run skips the slower clean-up of leftover links. |
 | `data-retention-sweep` | every day at 03:15, in the worker machine's time zone | The full sweep. |
 
 Choose one way to run them, never both:
 
-- `LOCAL_SCHEDULES=true` (in the settings above): the worker runs all of them except clustering.
+- `LOCAL_SCHEDULES=true` (in the settings above): the worker runs all of them.
 - Your own scheduler, for example cron, calling `/invoke` with the job's name as `queue_name`,
   and `{"skipOrphans": true}` as `data` for the hourly sweep.
 
 To stop schedules a worker left behind after you switch to cron, start the worker once with
-`LOCAL_SCHEDULES=false`: it removes them. Clustering always needs its own scheduler line, for
-example this crontab line:
+`LOCAL_SCHEDULES=false`: it removes them.
 
-```
-10 * * * * cd ~/mera-news-clustering && set -a && . ~/mera-news-data-server/.env && set +a && make run-cpu
-```
-
-## 14. Optional: group articles into stories
-
-The clustering job is a separate project, `mera-news-clustering`. Without it the server still
-fetches, embeds and answers topic queries, but `relatedArticles` and `newsClusterForArticle`
-answer nothing, and every headline stands alone.
-
-> Available once that repository is public.
-
-```sh
-git clone https://github.com/Mera-News/mera-news-clustering.git ~/mera-news-clustering
-cd ~/mera-news-clustering
-make setup
-set -a && . ~/mera-news-data-server/.env && set +a
-make run-cpu
-cd ~/mera-news-data-server
-curl -fsS -X POST http://127.0.0.1:8080/invoke -H "x-api-key: $MERA_SERVER_ASYNC_API_KEY" -H "content-type: application/json" -d '{"queue_name": "link-all-topics-to-clusters"}'
-until node dist/apps/mera-scripts/main.js status --check linked; do sleep 10; done
-```
-
-It needs Python 3.14 and no GPU. Run it every hour at :10, after the fetch.
-
-## 15. Optional: place search and topic categories
+## 14. Optional: place search and topic categories
 
 Place search (`placeSearch`) reads place names you load yourself from GeoNames. Download
 `cities15000.zip` and, for region names, `admin1CodesASCII.txt` from
@@ -658,7 +639,7 @@ a topic filter answers `NO_TOPIC_LINKS`. The categories are the content categori
 Cloud Natural Language API (https://docs.cloud.google.com/natural-language/docs/categories),
 licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/).
 
-## 16. Query
+## 15. Query
 
 Articles for a topic, as ids:
 
@@ -678,16 +659,19 @@ Headlines for a country, or `GLOBAL` for all:
 curl -fsS http://127.0.0.1:3002/graphql -H "content-type: application/json" -d '{"query": "{ topHeadlinesForCountry(countryCode: \"GBR\", first: 5) { headlines { clusterSize article { title_en article_url } } } }"}'
 ```
 
-Other queries: `relatedArticles` and `newsClusterForArticle` for an article's story,
-`searchNews` for search (only with a key: open mode does not offer search), `worldHeadlines`,
+Each headline stands alone, with a `clusterSize` of 0: the server setup does not group articles
+into stories (step 1), so `relatedArticles` answers an empty list and `newsClusterForArticle` answers
+null.
+
+Other queries: `searchNews` for search (only with a key: open mode does not offer search), `worldHeadlines`,
 `canonicalTopics` and `newsServerStatus`. The schema is in
 `apps/mera-server-news-api/src/schema.gql`, and the API answers introspection.
 
-## 17. What is stored, and what leaves your machine
+## 16. What is stored, and what leaves your machine
 
 Stored in your MongoDB Atlas database, which runs on MongoDB's servers:
 - Articles, for 48 hours.
-- Story clusters, for 48 hours.
+- Story groups, if a job of your own writes them, for 48 hours.
 - Article fingerprints (a record of each article address already seen), for 90 days, so an
   article is not stored twice.
 - Topics callers asked about, as anonymous shared rows, for 14 days after the last request.
@@ -706,7 +690,7 @@ Leaves your machine:
   `none`).
 - The server itself sends no telemetry.
 
-## 18. Keep it running
+## 17. Keep it running
 
 - The worker's `/health/ready` shows MongoDB, Redis and both search indexes; the news API's shows
   MongoDB and both search indexes. A search index that is not ready never makes `/health/ready`
@@ -729,14 +713,14 @@ npm run build:scripts
   ([Index outdated](#index-outdated)).
 - To stop: stop both services; your data stays in MongoDB.
 
-## 19. Sizing
+## 18. Sizing
 
 Measured numbers are not available for a single install yet. What grows: the article collection
 holds 48 hours of what your feeds publish, with two vectors per article; the bundled public feed
 list is very large, so start with your own file. Watch the database's storage, and the worker's
 memory while a fetch runs.
 
-## 20. Troubleshooting
+## 19. Troubleshooting
 
 Each search index state below shows in `/health/ready` and `newsServerStatus`, with the same
 words as here. Topic queries answer `INDEX_NOT_READY`, naming the state, while the vector index
@@ -792,7 +776,6 @@ fetch, or within a day if it was refused three times in a row and switched off.
 ### Local schedules
 
 Use either `LOCAL_SCHEDULES=true` or your own cron table, never both: both would run each job.
-Clustering still needs its own scheduler line.
 
 ### Empty answers
 
@@ -837,7 +820,7 @@ db['news-article'].aggregate([{ $listSearchIndexes: {} }]);
 These are the definitions the worker creates, from
 `libs/mera-models/src/search-index/retrieval-index.ts`.
 
-## 21. Next: run a pod on the same computer
+## 20. Next: run a pod on the same computer
 
 A pod keeps your news profile on your own computer, reads this server on a schedule and keeps
 the stories that matter to you, for your own AI tools to use. Its guide is

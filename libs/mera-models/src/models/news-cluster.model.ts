@@ -20,9 +20,9 @@ export class NewsCluster {
   updatedAt!: Date;
 
   // Total members in this cluster across the rolling clustering window
-  // (includes low-confidence fringe members). Denormalized by the Python
-  // clustering job (mera-news-clustering, `_persist_clusters`) so readers don't
-  // have to count cluster-article-link rows. Singletons/noise are size 1.
+  // (includes low-confidence fringe members). Denormalized by the clustering
+  // job so readers don't have to count cluster-article-link rows.
+  // Singletons/noise are size 1.
   // Nullable for back-compat with cluster docs written before this field.
   @Field(() => Int, { nullable: true })
   @Prop({ type: Number })
@@ -42,9 +42,9 @@ export class NewsCluster {
   clusteringRunId?: string;
 
   // Additive: stable identity for a multi-member cluster, written by the
-  // Python clustering job (mera-news-clustering, `_persist_clusters`) so a story
-  // can be tracked across rolling-window clustering runs even though the
-  // underlying NewsCluster doc is wipe-and-reinserted each run. Singletons/
+  // clustering job so a story can be tracked across rolling-window clustering
+  // runs even though the underlying NewsCluster doc is wipe-and-reinserted
+  // each run. Singletons/
   // noise clusters do not get one. Nullable everywhere — back-compat with
   // cluster docs written before this field, and with singleton clusters.
   @Field(() => String, { nullable: true })
