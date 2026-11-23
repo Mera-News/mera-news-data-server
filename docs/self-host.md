@@ -573,6 +573,13 @@ first answer may be short. If it has not finished after ten minutes, stop it wit
 against embedded articles, and the worker's output names the embedding error: often the embedding
 server is not running, the model was not pulled, or the key is wrong.
 
+Then give the search index half a minute to take in the new articles. A topic asked before that
+answers nothing, and the news API keeps an empty answer for an hour, or until it restarts:
+
+```sh
+sleep 30
+```
+
 Ask for a topic. Use a topic your feeds cover, in place of electric buses:
 
 ```sh
@@ -780,6 +787,8 @@ Use either `LOCAL_SCHEDULES=true` or your own cron table, never both: both would
 ### Empty answers
 
 - No articles yet: run step 12 and wait for `status --check embedded`.
+- Asked too early: a topic asked before the search index took in the articles stays empty for an
+  hour. Restart the news API, or ask again later.
 - Score floor too high for your model: pick it with `topic-scores` (step 12).
 - The vector index is not ready: see its state above.
 
