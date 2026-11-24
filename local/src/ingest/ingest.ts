@@ -10,7 +10,6 @@ import { articleUrlKey, buildArticleCopyKeys, type AllowList } from './shared.ts
 
 export const DEFAULT_CONCURRENCY = 4;
 export const PER_HOST_GAP_MS = 1000;
-export const CONTACT_KEY = 'contact';
 
 export type IngestEvent =
   | { event: 'ingest_start'; run: string; feeds: number }
@@ -40,22 +39,8 @@ export interface IngestSummary {
   failed: { feed: string; reason: string }[];
 }
 
-/** What every feed request says about who is fetching, with the person's contact. */
-export function userAgentFor(contact: string): string {
-  return `mera-news-local (self-hosted; ${contact})`;
-}
-
-export function requireContact(store: Store): string {
-  const contact = store.getMeta(CONTACT_KEY)?.trim();
-  if (!contact) {
-    throw new StoreError(
-      'contact_missing',
-      'Publishers ask to know who reads their feeds, so set an email address or website they can reach you at first.',
-      'mera-news-local config set contact you@example.com',
-    );
-  }
-  return contact;
-}
+/** What every feed request says about who is fetching: the software, never the person running it. */
+export const USER_AGENT = 'mera-news-local (self-hosted; +https://mera.news/self-host)';
 
 const embedText = (title: string, description: string | null) => (description ? `${title}\n${description}` : title);
 
@@ -66,12 +51,11 @@ const embedText = (title: string, description: string | null) => (description ? 
  */
 export async function runIngest(options: IngestOptions): Promise<IngestSummary> {
   const { store, embedder } = options;
-  const contact = requireContact(store);
   store.assertEmbeddingModel({ id: embedder.model, dims: embedder.dims });
   const release = acquireWriteLock(options.dbPath);
   try {
     const detector = options.detector ?? (await createLanguageDetector());
-    const userAgent = userAgentFor(contact);
+    const userAgent = USER_AGENT;
     const pace = createPacer(options.concurrency ?? DEFAULT_CONCURRENCY, options.gapMs ?? PER_HOST_GAP_MS);
     const wanted = options.feedIds ? new Set(options.feedIds) : null;
     const feeds = store.listFeeds({ activeOnly: !wanted }).filter((f) => !wanted || wanted.has(f.id));

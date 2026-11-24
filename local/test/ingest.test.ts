@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
 import { createFakeEmbedder } from '../src/embed/fake.ts';
 import { FetchError, fetchFeed } from '../src/ingest/fetch.ts';
-import { CONTACT_KEY, runIngest, userAgentFor, type IngestEvent } from '../src/ingest/ingest.ts';
+import { runIngest, USER_AGENT, type IngestEvent } from '../src/ingest/ingest.ts';
 import { createLanguageDetector, type LanguageDetector } from '../src/ingest/language.ts';
 import { acquireWriteLock } from '../src/ingest/lock.ts';
 import { parseFeed } from '../src/ingest/parse.ts';
@@ -90,10 +90,9 @@ before(async () => {
   detector = await createLanguageDetector();
 });
 
-function newStore(contact: string | null = 'reader@example.test') {
+function newStore() {
   const path = freshPath();
   const store = new Store(path);
-  if (contact) store.setMeta(CONTACT_KEY, contact);
   const feed = (url: string, language: string | null = 'en') =>
     store.upsertFeed({
       feedUrl: url,
@@ -110,19 +109,14 @@ const ingest = (store: Store, path: string, events: IngestEvent[] = []) =>
   runIngest({ store, dbPath: path, embedder: createFakeEmbedder(8), detector, allowHosts: allow(), gapMs: 50, onEvent: (e) => events.push(e) });
 
 describe('ingest', () => {
-  it('refuses to run until a contact is set, saying why', async () => {
-    const { store, path } = newStore(null);
-    await assert.rejects(ingest(store, path), (e: unknown) => e instanceof StoreError && e.code === 'contact_missing' && e.fix.startsWith('mera-news-local config set contact'));
-    store.close();
-  });
-
-  it('stores each item once, keeps old items, and sends the contact in the user agent', async () => {
+  it('stores each item once, keeps old items, and names only the software in the user agent', async () => {
     serveFeed('/harbour.xml', HARBOUR);
     const { store, path, feed } = newStore();
     feed(`${base}/harbour.xml`);
     const first = await ingest(store, path);
     assert.deepEqual([first.feedsOk, first.feedsFailed, first.articlesNew], [1, 0, 3]);
-    assert.equal(hits[0]!.headers['user-agent'], userAgentFor('reader@example.test'));
+    assert.equal(hits[0]!.headers['user-agent'], 'mera-news-local (self-hosted; +https://mera.news/self-host)');
+    assert.equal(hits[0]!.headers['user-agent'], USER_AGENT);
     const archive = store.db.prepare("SELECT pub_date FROM articles WHERE article_url LIKE '%archive'").get() as { pub_date: string };
     assert.equal(archive.pub_date, '2019-03-01T10:00:00.000Z');
     const second = await ingest(store, path);

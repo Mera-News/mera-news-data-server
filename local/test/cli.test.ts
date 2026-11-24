@@ -80,10 +80,9 @@ async function inProcess(home: string, args: string[], deps: Partial<Deps> = {},
   return { code, stdout, stderr };
 }
 
-/** A home with a contact, the loopback feeds and the loopback allowed. */
+/** A home with the loopback feeds and the loopback allowed. */
 async function readyHome(feeds: string[] = ['/ok.xml']) {
   const home = newHome();
-  assert.equal((await cli(home, ['config', 'set', 'contact', 'reader@example.test'])).code, 0);
   assert.equal((await cli(home, ['config', 'set', 'feeds.allowHosts', new URL(base).host])).code, 0);
   for (const f of feeds) assert.equal((await cli(home, ['feeds', 'add', `${base}${f}`, '--country', 'gbr'])).code, 0);
   return home;
@@ -107,15 +106,8 @@ describe('refusals', () => {
     assert.equal(out.json.fix, ERRORS[code]!.fix?.replace('{model}', out.json.fix?.split(' ').at(-1)) ?? null);
   };
 
-  it('contact_missing: names the command that sets it', async () => {
-    const home = newHome();
-    await cli(home, ['feeds', 'add', `${base}/ok.xml`]);
-    expectRefusal(await cli(home, ['ingest']), 'contact_missing', 2);
-  });
-
   it('feeds_none, feeds_choose, selector_invalid and feed_url_invalid', async () => {
     const home = newHome();
-    await cli(home, ['config', 'set', 'contact', 'reader@example.test']);
     expectRefusal(await cli(home, ['ingest']), 'feeds_none', 2);
     expectRefusal(await cli(home, ['feeds', 'load', '--file', FIXTURE]), 'feeds_choose', 2);
     expectRefusal(await cli(home, ['feeds', 'load', '--file', FIXTURE, '--only', 'country:ZZZ']), 'selector_invalid', 1);
@@ -171,7 +163,6 @@ describe('refusals', () => {
 
   it('serve answers the pod operations on 127.0.0.1 and stops on a signal', async () => {
     const home = newHome();
-    await cli(home, ['config', 'set', 'contact', 'reader@example.test']);
     await cli(home, ['config', 'set', 'feeds.allowHosts', new URL(base).host]);
     await cli(home, ['feeds', 'add', `${base}/ok.xml`]);
     await cli(home, ['ingest']);

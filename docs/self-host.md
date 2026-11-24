@@ -47,17 +47,6 @@ puts the `mera-news-local` command on your path. Everything it stores lives in
 `~/.mera-news-local`: `news.db`, the model files in `models/`, and `settings.json`. To keep it
 elsewhere, add `--home <folder>` to every command or set `MERA_NEWS_LOCAL_HOME`.
 
-### Say who you are
-
-Publishers ask to know who reads their feeds, so every request carries a contact. Fetching refuses
-to start until you set one:
-
-```bash
-mera-news-local config set contact you@example.com
-```
-
-A website address works too.
-
 ### Download the model
 
 ```bash

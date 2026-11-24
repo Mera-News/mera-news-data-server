@@ -9,7 +9,6 @@ interface Entry {
 }
 
 export const ERRORS: Record<string, Entry> = {
-  contact_missing: { exit: 2, fix: `${CMD} config set contact you@example.com` },
   store_busy: { exit: 2, fix: `${CMD} status` },
   store_too_old: { exit: 2, fix: 'npm ci' },
   wrong_model: { exit: 2, fix: `${CMD} reembed --model {model}` },

@@ -3,7 +3,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { DEFAULT_MODEL, licenceNotice } from '../embed/models.ts';
-import { CONTACT_KEY, requireContact, runIngest, type IngestEvent } from '../ingest/ingest.ts';
+import { runIngest, type IngestEvent } from '../ingest/ingest.ts';
 import { acquireWriteLock, writeLockHolder } from '../ingest/lock.ts';
 import { Store } from '../store/store.ts';
 import { CliError, ERRORS, refusalOf } from './errors.ts';
@@ -174,14 +174,11 @@ const embedderRequest = (ctx: Ctx, extra: Partial<EmbedderRequest> = {}): Embedd
 async function configSet(ctx: Ctx, args: string[]): Promise<Result> {
   const [key, value] = args;
   if (!key || value === undefined || args.length > 2) throw usage('Use config set <key> <value>.');
-  if (key === 'contact') {
-    if (!value.trim()) throw new CliError('config_invalid', 'The contact is empty. Give an email address or a website.');
-    await withStore(ctx, (store) => store.setMeta(CONTACT_KEY, value.trim()));
-  } else if ((SETTING_KEYS as readonly string[]).includes(key)) {
+  if ((SETTING_KEYS as readonly string[]).includes(key)) {
     validateSetting(key as SettingKey, value);
     writeSettings(ctx.home, { ...ctx.settings, [key]: value });
   } else {
-    throw new CliError('config_invalid', `${key} is not a setting. The settings are contact, ${SETTING_KEYS.join(', ')}.`);
+    throw new CliError('config_invalid', `${key} is not a setting. The settings are ${SETTING_KEYS.join(', ')}.`);
   }
   // The embedding key is never echoed, not even to the person who just typed it.
   const shown = key === 'embedder.key' ? 'set' : value;
@@ -189,11 +186,9 @@ async function configSet(ctx: Ctx, args: string[]): Promise<Result> {
 }
 
 async function configShow(ctx: Ctx): Promise<Result> {
-  const contact = await withStore(ctx, (store) => store.getMeta(CONTACT_KEY));
   const s = ctx.settings;
   const shown = {
     home: ctx.home.dir,
-    contact: contact ?? null,
     embedder: s.embedder ?? 'local',
     'embedder.model': s['embedder.model'] ?? DEFAULT_MODEL,
     'embedder.url': s['embedder.url'] ?? null,
@@ -373,7 +368,6 @@ function feedsList(ctx: Ctx, store: Store): Result {
 // ---- ingest
 
 async function ingest(ctx: Ctx, store: Store): Promise<Result> {
-  requireContact(store);
   const all = store.listFeeds({ activeOnly: true });
   if (all.length === 0) throw new CliError('feeds_none', 'There are no feeds to fetch yet.');
   let feedIds: string[] | undefined;
@@ -437,18 +431,13 @@ function status(ctx: Ctx, store: Store): Result {
   const articles = store.articleCount();
   const last = store.lastIngestAt();
   const problems: { code: string; message: string; fix: string }[] = [...store.integrityProblems()];
-  if (!store.getMeta(CONTACT_KEY)?.trim()) {
-    problems.push({ code: 'contact_missing', message: 'No contact is set, so ingest will refuse to run.', fix: ERRORS.contact_missing!.fix! });
-  }
   const note =
     feeds.length > MANY_FEEDS_NOTE_AT
       ? `This setup is built for 10 to 20 feeds and now has ${feeds.length}. For more, the server setup in docs/self-host.md fits better.`
       : null;
-  const contactProblem = problems.find((p) => p.code === 'contact_missing');
-  const other = problems.find((p) => p.code !== 'contact_missing');
+  const other = problems[0];
   let next: string;
   if (feeds.length === 0) next = ERRORS.feeds_choose!.fix!;
-  else if (contactProblem) next = contactProblem.fix;
   else if (other) next = other.fix;
   else if (!last) next = `${CMD} ingest`;
   else if (failedFeeds.length > 0) next = `${CMD} feeds list --failed`;
@@ -508,10 +497,7 @@ async function serve(ctx: Ctx, store: Store): Promise<Result> {
   const embedder = await buildEmbedder(embedderRequest(ctx, { download: true }));
   const every = whole('every', ctx.values.every);
   const ingest = every
-    ? () => {
-        requireContact(store);
-        return runIngest({ store, dbPath: ctx.home.db, embedder, allowHosts: allowHostsOf(ctx.settings), onEvent: (e: IngestEvent) => ctx.progress({ ...e }) });
-      }
+    ? () => runIngest({ store, dbPath: ctx.home.db, embedder, allowHosts: allowHostsOf(ctx.settings), onEvent: (e: IngestEvent) => ctx.progress({ ...e }) })
     : undefined;
   await serveFn({ store, embedder, port: whole('port', ctx.values.port), every, ingest, onEvent: ctx.progress });
   return { data: {}, text: 'Stopped.' };

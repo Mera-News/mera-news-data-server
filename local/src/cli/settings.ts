@@ -11,7 +11,7 @@ import { createOpenAiCompatibleEmbedder } from '../embed/openai-compatible.ts';
 import { parseAllowHosts, type AllowList } from '../ingest/shared.ts';
 import { CliError } from './errors.ts';
 
-/** Keys kept in settings.json. The contact is not here: it lives in the store, where ingest reads it. */
+/** Keys kept in settings.json. */
 export const SETTING_KEYS = ['embedder', 'embedder.model', 'embedder.url', 'embedder.dims', 'embedder.key', 'feeds.allowHosts'] as const;
 export type SettingKey = (typeof SETTING_KEYS)[number];
 export type Settings = Partial<Record<SettingKey, string>>;
