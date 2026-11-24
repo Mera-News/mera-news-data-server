@@ -21,7 +21,7 @@ Every setting, with its default, is in the guide; [.env.example](.env.example) h
 
 ## What this code can and cannot prove
 
-Mera's production servers run this repository's code inside private services: the ingest code inside Mera's worker, and the retrieval code inside the app's API. Mera does not run the standalone news API from this repository. The builds are not reproducible or signed, and the deployed commit is not published, so this code alone cannot prove what Mera's servers run. To depend on none of that, run it yourself: see [Run your own](#run-your-own).
+Mera's production servers run this repository's code inside private services: the ingest code inside Mera's worker, and the retrieval code inside the app's API. Mera also runs the standalone news API from this repository, built from `Dockerfile.news-api`, at `https://api.mera.news/graphql` for callers with a key. The builds are not reproducible or signed, and the deployed commit is not published, so this code alone cannot prove what Mera's servers run. To depend on none of that, run it yourself: see [Run your own](#run-your-own).
 
 ## Using the news API module in your own application
 
