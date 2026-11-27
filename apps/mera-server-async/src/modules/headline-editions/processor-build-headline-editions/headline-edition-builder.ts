@@ -8,7 +8,9 @@
  */
 
 /** Default cap on entries per edition (overridable via ConfigService). */
-export const HEADLINE_EDITION_MAX_ENTRIES = 1000;
+// 1000 ran the prod worker out of heap together with the whole-pool publisher count; raise it
+// through config only after measuring the build and the readers that load a whole list.
+export const HEADLINE_EDITION_MAX_ENTRIES = 200;
 
 /**
  * Article pool (hours) the build streams: 48h is the article TTL, so this is

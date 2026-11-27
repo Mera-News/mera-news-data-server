@@ -83,6 +83,29 @@ describe('headline editions across a rebuild', () => {
     ]);
   });
 
+  it('writes every scope when editions outnumber one write batch, and counts a story\'s publishers in every country', async () => {
+    // More country scopes than EDITION_WRITE_BATCH (20), so the build writes in several batches.
+    const countries = Array.from({ length: 25 }, (_, i) => `C${String(i).padStart(2, '0')}`);
+    for (const country_code of countries) {
+      const source = await seedSource(h.connection, { country_code });
+      await seedArticle(h.connection, { source, createdAt: hoursAgo(1) });
+    }
+    // One story told in NLD and in DEU by two publishers: the NLD edition counts both.
+    const nl = await seedSource(h.connection, { country_code: 'NLD', newsPublisherId: await seedPublisher(h.connection) });
+    const de = await seedSource(h.connection, { country_code: 'DEU', newsPublisherId: await seedPublisher(h.connection) });
+    await seedCluster(h.connection, [
+      await seedArticle(h.connection, { source: nl, createdAt: hoursAgo(1) }),
+      await seedArticle(h.connection, { source: de, createdAt: hoursAgo(2) }),
+    ]);
+    await build();
+
+    const scopes = await h.connection.collection('headline-edition').distinct('scopeKey');
+    expect(scopes.sort()).toEqual(['DEU', 'GLOBAL', 'NLD', ...countries].sort());
+    const res = await api.gql<Headlines>(COUNTS);
+    expect(res.body.errors).toBeUndefined();
+    expect(res.body.data!.topHeadlinesForCountry.headlines.map((x) => x.publisherCount)).toEqual([2]);
+  });
+
   it.each([
     ['GetTopHeadlinesForCountry', {}],
     ['GetTopHeadlinesForCountryWindowed', { windowHours: 24 }],

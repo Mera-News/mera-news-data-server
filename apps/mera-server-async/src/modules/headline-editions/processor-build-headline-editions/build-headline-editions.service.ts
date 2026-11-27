@@ -77,6 +77,9 @@ export interface BuildHeadlineEditionsResult {
  * is always unclustered and the 6h view loses about a sixth of its signal.
  * Building right after clustering finishes is the fix if 6h reads thin.
  */
+/** Editions per bulkWrite: bounds the documents held at once. */
+export const EDITION_WRITE_BATCH = 20;
+
 @Injectable()
 export class BuildHeadlineEditionsService {
   private readonly logger = new Logger(BuildHeadlineEditionsService.name);
@@ -219,33 +222,25 @@ export class BuildHeadlineEditionsService {
       `Resolved ${linksByArticleId.size} link(s) across ${clustersById.size} cluster(s)`,
     );
 
-    // Distinct publishers per cluster over the whole pool, whatever the scope
-    // or view: the count a story card shows beside the cluster size.
-    const publishersByCluster = new Map<string, Set<string>>();
-    for (const article of scopeBuckets.get(GLOBAL_SCOPE_KEY)!) {
-      const clusterId = linksByArticleId.get(article._id)?.clusterId;
-      if (!clusterId || !clustersById.has(clusterId)) continue;
-      const publisher =
-        publisherBySource.get(article.publicationSourceId) ??
-        article.publicationSourceId;
-      const set = publishersByCluster.get(clusterId);
-      if (set) set.add(publisher);
-      else publishersByCluster.set(clusterId, new Set([publisher]));
-    }
-
     this.logger.log(
       `headline editions: ${allArticleIds.length} article(s) in the pool, heapUsedMb=${Math.round(
         process.memoryUsage().heapUsed / 1048576,
       )}`,
     );
 
+    const globalPool = scopeBuckets.get(GLOBAL_SCOPE_KEY)!;
+
     // 4. Build every scope (GLOBAL + every country, incl. zero-article ones).
     const builtScopeKeys: string[] = [
       GLOBAL_SCOPE_KEY,
       ...Array.from(countryScopeKeys),
     ];
-    const ops: AnyBulkWriteOperation<HeadlineEditionDocument>[] = [];
     let totalEntries = 0;
+    // Lists first, then publisher counts for only the clusters an edition shows, then documents
+    // written in batches: holding every scope's documents for one bulkWrite, and a publisher set
+    // for every cluster in the pool, ran the worker out of heap on a ~500k-article pool.
+    const listsByScope = new Map<string, Map<number, HeadlineEntryOutput[]>>();
+    const shownClusters = new Set<string>();
 
     const toEntryDocs = (entries: HeadlineEntryOutput[]) =>
       entries.map((e) => ({
@@ -261,6 +256,7 @@ export class BuildHeadlineEditionsService {
           ? (publishersByCluster.get(e.clusterId)?.size ?? 0)
           : 0,
       }));
+    const publishersByCluster = new Map<string, Set<string>>();
 
     for (const scopeKey of builtScopeKeys) {
       const articles = scopeBuckets.get(scopeKey) ?? [];
@@ -285,7 +281,36 @@ export class BuildHeadlineEditionsService {
         );
         listsByView.set(viewHours, viewList);
         totalEntries += viewList.length;
+        for (const e of viewList) if (e.clusterId) shownClusters.add(e.clusterId);
       }
+      listsByScope.set(scopeKey, listsByView);
+      this.logger.log(
+        `headline edition scope=${scopeKey} entries=${listsByView.get(HEADLINE_ENTRIES_VIEW_HOURS)?.length ?? 0} ` +
+          `articles=${articles.length}` +
+          (scopeKey === GLOBAL_SCOPE_KEY
+            ? ` breadthRanking=${this.breadthRanking} marketCap=${this.marketCap}`
+            : ''),
+      );
+    }
+    scopeBuckets.clear();
+
+    // Distinct publishers per shown cluster, over the whole pool whatever the scope or view: the
+    // count a story card shows beside the cluster size.
+    for (const id of shownClusters) publishersByCluster.set(id, new Set<string>());
+    for (const article of globalPool) {
+      const set = publishersByCluster.get(
+        linksByArticleId.get(article._id)?.clusterId ?? '',
+      );
+      if (set)
+        set.add(
+          publisherBySource.get(article.publicationSourceId) ??
+            article.publicationSourceId,
+        );
+    }
+
+    let ops: AnyBulkWriteOperation<HeadlineEditionDocument>[] = [];
+    for (const scopeKey of builtScopeKeys) {
+      const listsByView = listsByScope.get(scopeKey)!;
       const entries = listsByView.get(HEADLINE_ENTRIES_VIEW_HOURS) ?? [];
 
       const doc = {
@@ -315,19 +340,20 @@ export class BuildHeadlineEditionsService {
           upsert: true,
         },
       });
-      this.logger.log(
-        `headline edition scope=${scopeKey} entries=${entries.length} ` +
-          `articles=${articles.length}` +
-          (scopeKey === GLOBAL_SCOPE_KEY
-            ? ` breadthRanking=${this.breadthRanking} marketCap=${this.marketCap}`
-            : ''),
-      );
+      listsByScope.delete(scopeKey);
+      if (ops.length >= EDITION_WRITE_BATCH) {
+        await this.headlineEditionModel.bulkWrite(ops, { ordered: false });
+        ops = [];
+      }
     }
 
-    // 5. One bulkWrite for all editions.
+    // 5. The last batch.
     if (ops.length > 0) {
       await this.headlineEditionModel.bulkWrite(ops, { ordered: false });
     }
+    this.logger.log(
+      `headline editions written, heapUsedMb=${Math.round(process.memoryUsage().heapUsed / 1048576)}`,
+    );
 
     // 6. Drop editions for scopes that no longer exist.
     const deleteResult = await this.headlineEditionModel.deleteMany({
