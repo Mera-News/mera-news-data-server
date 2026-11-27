@@ -53,6 +53,7 @@ const EXPECTED_OPERATIONS = [
   'NewsServerStatus',
   'PlaceSearch',
   'PublicationProfile',
+  'PublicationProfileLegacy',
   'PublicationSourcesForNewsPublisher',
   'SearchNews',
   'SearchPublishers',
