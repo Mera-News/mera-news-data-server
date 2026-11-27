@@ -139,15 +139,15 @@ export class BuildHeadlineEditionsService {
     const countryBySource = new Map<string, string>();
     const sourceMeta = new Map<string, HeadlineSourceMeta>();
     const countryScopeKeys = new Set<string>();
+    const publisherBySource = new Map<string, string>();
     for (const src of sources) {
+      const sourceId = src._id.toString();
+      const publisherKey = src.newsPublisherId?.toString() ?? sourceId;
+      publisherBySource.set(sourceId, publisherKey);
       const country = src.country_code;
       if (!country) continue;
-      const sourceId = src._id.toString();
       countryBySource.set(sourceId, country);
-      sourceMeta.set(sourceId, {
-        country,
-        publisherKey: src.newsPublisherId?.toString() ?? sourceId,
-      });
+      sourceMeta.set(sourceId, { country, publisherKey });
       // Wire/international sources carry `country_code: 'GLOBAL'`, the same
       // literal as the global scope sentinel. Registering it as a country scope
       // would make it collide with GLOBAL — see the bucket push below.
@@ -219,6 +219,20 @@ export class BuildHeadlineEditionsService {
       `Resolved ${linksByArticleId.size} link(s) across ${clustersById.size} cluster(s)`,
     );
 
+    // Distinct publishers per cluster over the whole pool, whatever the scope
+    // or view: the count a story card shows beside the cluster size.
+    const publishersByCluster = new Map<string, Set<string>>();
+    for (const article of scopeBuckets.get(GLOBAL_SCOPE_KEY)!) {
+      const clusterId = linksByArticleId.get(article._id)?.clusterId;
+      if (!clusterId || !clustersById.has(clusterId)) continue;
+      const publisher =
+        publisherBySource.get(article.publicationSourceId) ??
+        article.publicationSourceId;
+      const set = publishersByCluster.get(clusterId);
+      if (set) set.add(publisher);
+      else publishersByCluster.set(clusterId, new Set([publisher]));
+    }
+
     this.logger.log(
       `headline editions: ${allArticleIds.length} article(s) in the pool, heapUsedMb=${Math.round(
         process.memoryUsage().heapUsed / 1048576,
@@ -243,6 +257,9 @@ export class BuildHeadlineEditionsService {
         rank: e.rank,
         breadthScore: e.breadthScore ?? null,
         marketCount: e.marketCount ?? null,
+        publisherCount: e.clusterId
+          ? (publishersByCluster.get(e.clusterId)?.size ?? 0)
+          : 0,
       }));
 
     for (const scopeKey of builtScopeKeys) {

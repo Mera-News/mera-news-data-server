@@ -8,7 +8,7 @@
  */
 
 /** Default cap on entries per edition (overridable via ConfigService). */
-export const HEADLINE_EDITION_MAX_ENTRIES = 200;
+export const HEADLINE_EDITION_MAX_ENTRIES = 1000;
 
 /**
  * Article pool (hours) the build streams: 48h is the article TTL, so this is

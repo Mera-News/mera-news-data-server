@@ -40,6 +40,12 @@ export class HeadlineEditionEntry {
   @Prop({ type: Number, default: null })
   breadthScore?: number | null;
 
+  // Distinct publishers (`newsPublisherId`, else the source) among all of the
+  // cluster's members in the build pool. 0 for singletons; null on editions
+  // written before the field existed.
+  @Prop({ type: Number, default: null })
+  publisherCount?: number | null;
+
   // Distinct countries covering the story. Observability today; a candidate
   // "covered in N countries" UI label later.
   @Prop({ type: Number, default: null })
