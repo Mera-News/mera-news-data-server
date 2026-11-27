@@ -56,9 +56,9 @@ interface OffsetCursor {
 /**
  * Encode an offset-based cursor. The materialized editions are an ordered array,
  * so paging is a simple offset — the keyset cursors in `@mera/shared` are
- * sort-key-shaped and don't fit, hence this tiny local codec. `pageInfo`
- * cursors never carry `builtAt`, so shipped clients keep paging across a
- * rebuild exactly as before.
+ * sort-key-shaped and don't fit, hence this tiny local codec. Every cursor
+ * carries `builtAt` when there is an edition, so a rebuilt one is detected;
+ * a bare `{ offset }` cursor given out earlier still pages across a rebuild.
  */
 function encodeOffsetCursor(offset: number, builtAt?: Date | null): string {
   const payload: OffsetCursor = builtAt
@@ -89,7 +89,7 @@ function decodeOffsetCursor(cursor: string): OffsetCursor | null {
   }
 }
 
-function clampPageSize(first: number): number {
+export function clampTopHeadlinesPageSize(first: number): number {
   const n = Number.isFinite(first) ? Math.floor(first) : DEFAULT_PAGE_SIZE;
   return Math.min(Math.max(n, 1), MAX_TOP_HEADLINES_PAGE_SIZE);
 }
@@ -121,7 +121,7 @@ export class TopHeadlinesService {
     windowHours: number = DEFAULT_HEADLINE_VIEW_WINDOW_HOURS,
   ): Promise<TopHeadlinesForCountryResponse> {
     const scopeKey = toHeadlineScopeKey(countryCode);
-    const pageSize = clampPageSize(first);
+    const pageSize = clampTopHeadlinesPageSize(first);
     const cursor = after ? decodeOffsetCursor(after) : null;
     const offset = Math.min(cursor?.offset ?? 0, MAX_SLICE_POSITION);
 
@@ -171,7 +171,9 @@ export class TopHeadlinesService {
       headlines,
       articles: headlines.map((h) => h.article),
       pageInfo: {
-        endCursor: hasNextPage ? encodeOffsetCursor(offset + pageSize) : null,
+        endCursor: hasNextPage
+          ? encodeOffsetCursor(offset + pageSize, builtAt)
+          : null,
         hasNextPage,
         pageSize,
       },

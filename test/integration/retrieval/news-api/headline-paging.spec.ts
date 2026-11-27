@@ -70,6 +70,25 @@ describe('paging headlines and country articles', () => {
     return out;
   }
 
+  describe('articlesForCountry TOP_HEADLINES', () => {
+    it('clamps first like topHeadlinesForCountry', async () => {
+      await seedNld(3);
+      const find = jest.spyOn(Aggregate.prototype, 'exec');
+      try {
+        const res = await country({ first: 100_000 });
+        expect(res.body.errors).toBeUndefined();
+        const limits = find.mock.contexts.flatMap((agg) =>
+          (agg.pipeline() as Record<string, number>[])
+            .map((stage) => stage.$limit)
+            .filter((n) => typeof n === 'number'),
+        );
+        expect(Math.max(...limits)).toBeLessThanOrEqual(201);
+      } finally {
+        find.mockRestore();
+      }
+    });
+  });
+
   describe('topHeadlinesForCountry', () => {
     it.each([
       ['0', 0, 1],
@@ -82,6 +101,30 @@ describe('paging headlines and country articles', () => {
       const page = res.body.data!.topHeadlinesForCountry;
       expect(page.pageInfo.pageSize).toBe(pageSize);
       expect(page.headlines).toHaveLength(Math.min(pageSize, 3));
+    });
+
+    it('keeps paging a bare offset cursor after a rebuild, and answers EDITION_CHANGED for an endCursor', async () => {
+      const seeded = await seedNld(4);
+      await seedHeadlineEdition(api.connection, 'NLD', seeded);
+      const first = (await headlines({ first: 2 })).body.data!
+        .topHeadlinesForCountry;
+      await api.connection
+        .collection('headline-edition')
+        .updateOne(
+          { scopeKey: 'NLD' },
+          { $set: { builtAt: new Date(Date.now() + 1000) } },
+        );
+      const stale = await headlines({
+        first: 2,
+        after: first.pageInfo.endCursor,
+      });
+      expect(stale.body.errors?.[0].extensions?.code).toBe('EDITION_CHANGED');
+      const bare = Buffer.from(JSON.stringify({ offset: 2 })).toString(
+        'base64',
+      );
+      const old = await headlines({ first: 2, after: bare });
+      expect(old.body.errors).toBeUndefined();
+      expect(old.body.data!.topHeadlinesForCountry.headlines).toHaveLength(2);
     });
 
     it('continues right after any headline given its cursor', async () => {
@@ -101,7 +144,7 @@ describe('paging headlines and country articles', () => {
       ).toEqual(seeded.slice(2));
     });
 
-    it('answers EDITION_CHANGED for a headline cursor once the edition is rebuilt, and keeps paging by endCursor', async () => {
+    it('answers EDITION_CHANGED for a headline cursor once the edition is rebuilt, and keeps paging by a bare cursor', async () => {
       const seeded = await seedNld(4);
       await seedHeadlineEdition(api.connection, 'NLD', seeded);
       const first = (await headlines({ first: 2 })).body.data!
@@ -122,7 +165,7 @@ describe('paging headlines and country articles', () => {
 
       const byEnd = await headlines({
         first: 2,
-        after: first.pageInfo.endCursor,
+        after: Buffer.from(JSON.stringify({ offset: 2 })).toString('base64'),
       });
       expect(byEnd.body.errors).toBeUndefined();
       expect(

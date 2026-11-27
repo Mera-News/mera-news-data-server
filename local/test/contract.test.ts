@@ -247,4 +247,22 @@ describe('the contract with the full server', () => {
     const bad = await ask('nonsense');
     assert.equal(bad.result.errors?.[0]?.extensions?.code, 'BAD_USER_INPUT');
   });
+
+  it('caps an articlesForCountry NEWEST page at 50, as the full server does', async () => {
+    const feed = store.upsertFeed({
+      feedUrl: 'https://many.example.test/rss',
+      publicationName: 'Many',
+      publicationUrl: null,
+      countryCode: 'GBR',
+      feedLanguageCode: 'en',
+      publisher: { name: 'Many', countryCode: 'GBR', websiteUrl: null },
+    });
+    const vector = (await embedder.embedPassages(['Many items']))[0]!;
+    const items = Array.from({ length: 60 }, (_, i) => ({ articleUrl: `https://many.example.test/${i}`, fingerprint: `url:many/${i}`, copyKeys: [], title: `Many item ${i}`, description: null, imageUrl: null, languageCode: null, pubDate: new Date().toISOString(), vector }));
+    store.writeFeedFetch(feed.id, items, { at: new Date().toISOString(), status: 'ok' }, null);
+    const { result } = await runQuery(schema, { store, embedder }, {
+      query: '{ articlesForCountry(countryCode: "GLOBAL", first: 100, order: NEWEST) { articles { _id } itemCursors } }',
+    });
+    assert.equal((result.data as any).articlesForCountry.articles.length, 50);
+  });
 });

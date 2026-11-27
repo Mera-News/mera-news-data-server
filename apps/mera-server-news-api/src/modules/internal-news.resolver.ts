@@ -51,6 +51,7 @@ import {
   RelatedArticlesPage,
   RelatedSortModeEnum,
   ServerStatusService,
+  clampTopHeadlinesPageSize,
   toGeoLanguageContext,
   toSortMode,
 } from '@mera/news-core';
@@ -248,7 +249,7 @@ export class InternalNewsResolver {
   @Query(() => TopHeadlinesForCountryResponse, {
     name: 'topHeadlinesForCountry',
     description:
-      'A country\'s precomputed, cluster-deduplicated top headlines (each big story appears once), paged over the materialized edition. A null or "GLOBAL" countryCode spans all countries. windowHours ranks the stories most covered in the last 6, 12, 24 (default) or 48 hours. Falls back to the live path (editionBuiltAt: null) when no edition exists yet. A headline cursor answers EDITION_CHANGED once its edition is rebuilt; pageInfo.endCursor keeps paging across a rebuild.',
+      'A country\'s precomputed, cluster-deduplicated top headlines (each big story appears once), paged over the materialized edition. A null or "GLOBAL" countryCode spans all countries. windowHours ranks the stories most covered in the last 6, 12, 24 (default) or 48 hours. Falls back to the live path (editionBuiltAt: null) when no edition exists yet. A cursor answers EDITION_CHANGED once the edition is rebuilt; start again from the first page.',
   })
   async topHeadlinesForCountry(
     @Args('countryCode', {
@@ -334,7 +335,7 @@ export class InternalNewsResolver {
     }
     return this.newsArticleService.articlesForCountry(
       countryCode,
-      first ?? DEFAULT_PAGE_SIZE,
+      clampTopHeadlinesPageSize(first ?? DEFAULT_PAGE_SIZE),
       after,
     );
   }

@@ -23,6 +23,7 @@ import { DEFAULT_SEARCH_LIMIT, MAX_SEARCH_DEPTH, MAX_SEARCH_PAGE_LIMIT, personaW
 
 export const MAX_QUERY_DEPTH = 12;
 const MAX_PAGE = 100;
+const MAX_NEWEST_PAGE = 50;
 
 export interface Context {
   store: Store;
@@ -185,8 +186,8 @@ const RESOLVERS: Record<string, Resolver> = {
   },
 
   // `order` is accepted and both orders answer newest first: the store keeps no clusters to rank by.
-  articlesForCountry(_p, { countryCode, first, after }, { store }) {
-    const size = page(first);
+  articlesForCountry(_p, { countryCode, first, after, order }, { store }) {
+    const size = order === 'NEWEST' ? Math.min(page(first), MAX_NEWEST_PAGE) : page(first);
     const all = !countryCode || countryCode === 'GLOBAL';
     const where: string[] = [];
     const args: (string | number)[] = [];

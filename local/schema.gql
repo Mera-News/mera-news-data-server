@@ -562,7 +562,7 @@ type Query {
   ): [NewsSearchHit!]!
 
   """
-  searchNews in pages. The first page freezes the 48h window into nextCursor; each page ranks that window again, so a hit can repeat or be missed across pages. At most 100 hits per page and 2500 in all.
+  searchNews in pages. The first page freezes the 48h window into nextCursor; paging is best effort: each page ranks that window again, and a re-ranked live corpus can repeat or skip an item between pages. At most 100 hits per page and 2500 in all.
   """
   searchNewsPage(
     """nextCursor of the previous page."""
@@ -582,7 +582,7 @@ type Query {
   ): SearchPublishersResponse!
 
   """
-  A country's precomputed, cluster-deduplicated top headlines (each big story appears once), paged over the materialized edition. A null or "GLOBAL" countryCode spans all countries. windowHours ranks the stories most covered in the last 6, 12, 24 (default) or 48 hours. Falls back to the live path (editionBuiltAt: null) when no edition exists yet.
+  A country's precomputed, cluster-deduplicated top headlines (each big story appears once), paged over the materialized edition. A null or "GLOBAL" countryCode spans all countries. windowHours ranks the stories most covered in the last 6, 12, 24 (default) or 48 hours. Falls back to the live path (editionBuiltAt: null) when no edition exists yet. A cursor answers EDITION_CHANGED once the edition is rebuilt; start again from the first page.
   """
   topHeadlinesForCountry(
     """Cursor to fetch items after"""

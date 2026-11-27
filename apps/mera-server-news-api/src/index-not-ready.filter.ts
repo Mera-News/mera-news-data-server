@@ -4,8 +4,9 @@ import { GraphQLError } from 'graphql';
 
 /**
  * Nest logs every error a resolver throws at ERROR with its stack. A search
- * index that is still building is an expected state that callers retry, so it
- * gets one warning per answer instead; every other error is logged as before.
+ * index that is still building, or a headline list rebuilt between two pages,
+ * is an expected state that callers retry, so each gets one line per answer
+ * instead; every other error is logged as before.
  */
 @Catch(GraphQLError)
 export class IndexNotReadyFilter implements GqlExceptionFilter {
@@ -14,6 +15,8 @@ export class IndexNotReadyFilter implements GqlExceptionFilter {
   catch(error: GraphQLError): GraphQLError {
     if (error.extensions?.code === 'INDEX_NOT_READY') {
       this.logger.warn(`${error.message} (INDEX_NOT_READY)`);
+    } else if (error.extensions?.code === 'EDITION_CHANGED') {
+      this.logger.log(`${error.message} (EDITION_CHANGED)`);
     } else {
       this.logger.error(error);
     }

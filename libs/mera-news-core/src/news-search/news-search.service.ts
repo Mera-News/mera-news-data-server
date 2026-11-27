@@ -77,6 +77,9 @@ const MAX_NUM_CANDIDATES = 10_000;
 /** Recency window. Matches the 48h `NewsArticle` retention: older rows are gone. */
 const CUTOFF_HOURS = 48;
 
+/** How far ahead of this clock a cursor's `asOf` may be (another instance's clock). */
+const CURSOR_CLOCK_SKEW_MS = 5 * 60 * 1000;
+
 /** The lexical (lucene) Atlas index. Optional: without it the vector leg answers alone. */
 export const LEXICAL_SEARCH_INDEX = TEXT_INDEX_NAME;
 
@@ -156,6 +159,16 @@ export function decodeSearchCursor(text: string): SearchCursor | null {
       typeof offset !== 'number' ||
       !Number.isInteger(offset) ||
       offset < 0
+    ) {
+      return null;
+    }
+    const asOfAt = Date.parse(asOf);
+    const fromAt = Date.parse(from);
+    // A forged cursor must not read outside the 48h window or move it ahead of this clock.
+    if (
+      asOfAt > Date.now() + CURSOR_CLOCK_SKEW_MS ||
+      fromAt > asOfAt ||
+      fromAt < asOfAt - CUTOFF_HOURS * 60 * 60 * 1000
     ) {
       return null;
     }

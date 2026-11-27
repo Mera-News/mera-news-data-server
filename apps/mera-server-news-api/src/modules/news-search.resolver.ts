@@ -57,7 +57,7 @@ export class NewsSearchResolver {
     name: 'searchNewsPage',
     description:
       'searchNews in pages. The first page freezes the 48h window into nextCursor; ' +
-      'each page ranks that window again, so a hit can repeat or be missed across pages. ' +
+      'paging is best effort: each page ranks that window again, and a re-ranked live corpus can repeat or skip an item between pages. ' +
       `At most ${MAX_SEARCH_PAGE_LIMIT} hits per page and ${MAX_SEARCH_DEPTH} in all.`,
   })
   async searchNewsPage(

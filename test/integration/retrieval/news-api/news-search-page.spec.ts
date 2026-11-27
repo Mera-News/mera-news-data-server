@@ -144,8 +144,43 @@ describe('searchNewsPage', () => {
       'no window',
       Buffer.from(JSON.stringify({ offset: 10 })).toString('base64'),
     ],
+    [
+      'dated in the future',
+      encodeSearchCursor({
+        asOf: new Date(Date.now() + 3600_000),
+        from: new Date(Date.now() + 3600_000 - 48 * 3600_000),
+        offset: 0,
+      }),
+    ],
+    [
+      'reaching back past the 48h window',
+      encodeSearchCursor({
+        asOf: new Date(),
+        from: new Date(Date.now() - 400 * 3600_000),
+        offset: 0,
+      }),
+    ],
+    [
+      'a window that starts after it ends',
+      encodeSearchCursor({
+        asOf: new Date(Date.now() - 3600_000),
+        from: new Date(),
+        offset: 0,
+      }),
+    ],
   ])('refuses a cursor that is %s', async (_, after) => {
     const res = await page({ after });
     expect(res.body.errors?.[0].message).toBe('after is not a valid cursor');
+  });
+
+  it('accepts a cursor a few minutes ahead of this clock', async () => {
+    const asOf = new Date(Date.now() + 2 * 60_000);
+    const after = encodeSearchCursor({
+      asOf,
+      from: new Date(asOf.getTime() - 48 * 3600_000),
+      offset: 0,
+    });
+    const res = await page({ after });
+    expect(res.body.errors).toBeUndefined();
   });
 });
