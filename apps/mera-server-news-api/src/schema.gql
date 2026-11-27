@@ -71,6 +71,11 @@ type ArticleWithClusters {
 
 type ArticlesForPublicationSourceResponse {
   articles: [NewsArticle!]!
+
+  """
+  One cursor per article, in the same order: passed as after, it continues right after that article, so a caller that keeps only part of a page loses nothing.
+  """
+  itemCursors: [String!]!
   pageInfo: CursorPageInfo!
 }
 
@@ -273,6 +278,18 @@ type NewsSearchHit {
   title_en: String!
 }
 
+"""
+One page of searchNews hits. Best effort: each page ranks the same frozen 48h window again, so a hit can repeat or be missed across pages.
+"""
+type NewsSearchPage {
+  hits: [NewsSearchHit!]!
+
+  """
+  Passed as after, reads the next page. Null on the last page, or 2500 hits deep.
+  """
+  nextCursor: String
+}
+
 type NewsServerStatus {
   embeddingModel: String
   headlineEditionsBuilt: Boolean!
@@ -429,7 +446,7 @@ type PublicationSourcesForPublisherResponse {
   publicationSources: [PublicationSource!]!
 }
 
-"""Ordering for articlesForPublisher."""
+"""Ordering for articlesForPublisher and articlesForCountry."""
 enum PublisherArticleOrder {
   """
   Newest first across all feeds over 48h, deduped by canonical URL, at most 50 per page.
@@ -458,7 +475,16 @@ type Query {
   """
   articleById(id: ID!): NewsArticle
   articleIdsForPersona(query: PersonaQueryInput!): PersonaQueryResult!
-  articlesForCountry(after: String, countryCode: String, first: Int = 20): ArticlesForPublicationSourceResponse!
+  articlesForCountry(
+    after: String
+    countryCode: String
+    first: Int = 20
+
+    """
+    TOP_HEADLINES (default) keeps the original view. NEWEST is newest first over 48h, at most 50 per page.
+    """
+    order: PublisherArticleOrder = TOP_HEADLINES
+  ): ArticlesForPublicationSourceResponse!
   articlesForPublicationSource(after: String, first: Int = 20, publicationSourceId: ID!): ArticlesForPublicationSourceResponse!
 
   """
@@ -534,6 +560,18 @@ type Query {
     limit: Int
     query: String!
   ): [NewsSearchHit!]!
+
+  """
+  searchNews in pages. The first page freezes the 48h window into nextCursor; each page ranks that window again, so a hit can repeat or be missed across pages. At most 100 hits per page and 2500 in all.
+  """
+  searchNewsPage(
+    """nextCursor of the previous page."""
+    after: String
+
+    """Hits on this page, clamped to 1..100. Default 20."""
+    limit: Int
+    query: String!
+  ): NewsSearchPage!
   searchPublishers(
     """Cursor to fetch items after"""
     after: String
@@ -659,6 +697,16 @@ type TopHeadline {
 
   """Global cluster size across the clustering window; 0 for a singleton."""
   clusterSize: Int!
+
+  """
+  Passed as after, continues right after this headline. Null where the list gives no per-headline cursor.
+  """
+  cursor: String
+
+  """
+  Distinct publishers among the cluster members, counted when the edition was built; 0 for a singleton.
+  """
+  publisherCount: Int!
 
   """
   Stable cross-run identity of this headline's cluster; null for a singleton.

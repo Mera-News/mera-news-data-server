@@ -13,28 +13,36 @@ export function assertCursorLength(after: string | null | undefined): void {
 }
 
 /**
- * An offset cursor (`{ offset }`, used by the headline editions). The services
- * read a malformed one as the first page, so it is refused here instead.
+ * An offset cursor (`{ offset }`, used by the headline editions, plus
+ * `builtAt` on a per-headline cursor). The services read a malformed one as
+ * the first page, so it is refused here instead.
  */
 export function assertOffsetCursor(after: string | null | undefined): void {
   if (!after) return;
   assertCursorLength(after);
-  let offset: unknown;
+  let payload: { offset?: unknown; builtAt?: unknown } | null = null;
   try {
-    offset = (
-      JSON.parse(Buffer.from(after, 'base64').toString('utf-8')) as {
-        offset?: unknown;
-      }
-    ).offset;
+    payload = JSON.parse(Buffer.from(after, 'base64').toString('utf-8')) as {
+      offset?: unknown;
+      builtAt?: unknown;
+    };
   } catch {
-    refuse();
+    refuseCursor();
   }
+  const offset = payload?.offset;
   if (typeof offset !== 'number' || !Number.isInteger(offset) || offset < 0) {
-    refuse();
+    refuseCursor();
+  }
+  const builtAt = payload?.builtAt;
+  if (
+    builtAt !== undefined &&
+    (typeof builtAt !== 'string' || Number.isNaN(Date.parse(builtAt)))
+  ) {
+    refuseCursor();
   }
 }
 
-function refuse(): never {
+export function refuseCursor(): never {
   throw new BadRequestException('after is not a valid cursor');
 }
 
@@ -51,20 +59,20 @@ export function assertKeysetCursor(after: string | null | undefined): void {
   try {
     payload = JSON.parse(Buffer.from(after, 'base64').toString('utf-8'));
   } catch {
-    refuse();
+    refuseCursor();
   }
-  if (typeof payload !== 'object' || payload === null) refuse();
+  if (typeof payload !== 'object' || payload === null) refuseCursor();
   const { _id, createdAt } = payload as { _id?: unknown; createdAt?: unknown };
   if (
     _id !== undefined &&
     (typeof _id !== 'string' || !OBJECT_ID_HEX.test(_id))
   ) {
-    refuse();
+    refuseCursor();
   }
   if (
     createdAt !== undefined &&
     (typeof createdAt !== 'string' || Number.isNaN(Date.parse(createdAt)))
   ) {
-    refuse();
+    refuseCursor();
   }
 }

@@ -9,4 +9,10 @@ export class ArticlesForPublicationSourceResponse {
 
   @Field(() => CursorPageInfo)
   pageInfo!: CursorPageInfo;
+
+  @Field(() => [String], {
+    description:
+      'One cursor per article, in the same order: passed as after, it continues right after that article, so a caller that keeps only part of a page loses nothing.',
+  })
+  itemCursors!: string[];
 }

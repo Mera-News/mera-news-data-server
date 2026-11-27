@@ -32,7 +32,7 @@ import {
   EMBEDDING_PROVIDER,
   EmbeddingProvider,
 } from '../embedding-provider/embedding-provider.port';
-import { NewsSearchHit } from './news-search.dto';
+import { NewsSearchHit, NewsSearchPage } from './news-search.dto';
 
 /**
  * `searchNews`: hybrid search over the recent corpus. An Atlas Search (lucene)
@@ -61,6 +61,18 @@ export const MAX_SEARCH_LIMIT = 25;
 
 /** Applied when the caller passes no limit. */
 export const DEFAULT_SEARCH_LIMIT = 20;
+
+/** Hard ceiling on one `searchNewsPage` page. */
+export const MAX_SEARCH_PAGE_LIMIT = 100;
+
+/**
+ * How deep `searchNewsPage` reads: offset plus page size never passes this.
+ * At 4x over-fetch it is exactly Atlas's 10,000 ANN limit.
+ */
+export const MAX_SEARCH_DEPTH = 2500;
+
+/** Atlas refuses a `numCandidates` above this. */
+const MAX_NUM_CANDIDATES = 10_000;
 
 /** Recency window. Matches the 48h `NewsArticle` retention: older rows are gone. */
 const CUTOFF_HOURS = 48;
@@ -105,6 +117,59 @@ function describeError(error: unknown): string {
   return typeof code === 'string' || typeof code === 'number'
     ? `${name} ${code}`
     : name;
+}
+
+/**
+ * Where a search page continues: both window bounds frozen at the first page,
+ * and the number of collapsed hits already served. Best effort: each page
+ * ranks the window again, and ingest inside it can still move a hit across a
+ * page boundary, so a hit can repeat or be missed.
+ */
+export interface SearchCursor {
+  asOf: Date;
+  from: Date;
+  offset: number;
+}
+
+export function encodeSearchCursor(cursor: SearchCursor): string {
+  return Buffer.from(
+    JSON.stringify({
+      asOf: cursor.asOf.toISOString(),
+      from: cursor.from.toISOString(),
+      offset: cursor.offset,
+    }),
+    'utf-8',
+  ).toString('base64');
+}
+
+/** Null on anything that is not a cursor `encodeSearchCursor` could give out. */
+export function decodeSearchCursor(text: string): SearchCursor | null {
+  try {
+    const { asOf, from, offset } = JSON.parse(
+      Buffer.from(text, 'base64').toString('utf-8'),
+    ) as { asOf?: unknown; from?: unknown; offset?: unknown };
+    if (
+      typeof asOf !== 'string' ||
+      typeof from !== 'string' ||
+      Number.isNaN(Date.parse(asOf)) ||
+      Number.isNaN(Date.parse(from)) ||
+      typeof offset !== 'number' ||
+      !Number.isInteger(offset) ||
+      offset < 0
+    ) {
+      return null;
+    }
+    return { asOf: new Date(asOf), from: new Date(from), offset };
+  } catch {
+    return null;
+  }
+}
+
+/** The `createdAt` bounds both legs search inside. */
+interface SearchWindow {
+  from: Date;
+  /** Unset for `searchNews`, which reads up to now. */
+  asOf?: Date;
 }
 
 /** Reciprocal-rank-fusion damping constant. 60 is the value from the original
@@ -357,8 +422,59 @@ export class NewsSearchService {
     query: string,
     limit?: number | null,
   ): Promise<NewsSearchHit[]> {
+    const normalized = this.checkedQuery(query);
+    if (normalized === '') return [];
+    const effectiveLimit = NewsSearchService.clampLimit(limit);
+    const window = {
+      from: new Date(Date.now() - CUTOFF_HOURS * 60 * 60 * 1000),
+    };
+    const ranked = await this.rankedMatches(normalized, effectiveLimit, window);
+    return this.toHits(ranked.slice(0, effectiveLimit));
+  }
+
+  /**
+   * One page of the same ranking, read `offset` hits deep. The first page
+   * freezes the 48h window into the cursor, so later pages rank the same
+   * articles plus nothing newer. Each page re-runs both legs to
+   * `offset + limit`, so the depth is capped at {@link MAX_SEARCH_DEPTH}.
+   */
+  async searchNewsPage(
+    query: string,
+    limit?: number | null,
+    after?: SearchCursor | null,
+  ): Promise<NewsSearchPage> {
+    const normalized = this.checkedQuery(query);
+    if (normalized === '') return { hits: [], nextCursor: null };
+    const asOf = after?.asOf ?? new Date();
+    const from =
+      after?.from ?? new Date(asOf.getTime() - CUTOFF_HOURS * 60 * 60 * 1000);
+    const offset = after?.offset ?? 0;
+    const size = Math.min(
+      limit == null || !Number.isFinite(limit)
+        ? DEFAULT_SEARCH_LIMIT
+        : Math.max(1, Math.min(MAX_SEARCH_PAGE_LIMIT, Math.floor(limit))),
+      MAX_SEARCH_DEPTH - offset,
+    );
+    if (size <= 0) return { hits: [], nextCursor: null };
+
+    const ranked = await this.rankedMatches(normalized, offset + size, {
+      from,
+      asOf,
+    });
+    const hits = await this.toHits(ranked.slice(offset, offset + size));
+    const served = offset + hits.length;
+    const more = ranked.length > offset + size && served < MAX_SEARCH_DEPTH;
+    return {
+      hits,
+      nextCursor: more
+        ? encodeSearchCursor({ asOf, from, offset: served })
+        : null,
+    };
+  }
+
+  /** The normalised query, '' for an empty one; refuses one that is too long. */
+  private checkedQuery(query: string): string {
     const normalized = NewsSearchService.normalizeQuery(query);
-    if (normalized.length === 0) return [];
     // Before any embedding or search call, and without echoing the text.
     if (normalized.length > MAX_QUERY_LENGTH) {
       throw new GraphQLError(
@@ -366,11 +482,16 @@ export class NewsSearchService {
         { extensions: { code: 'QUERY_TOO_LONG' } },
       );
     }
+    return normalized;
+  }
 
-    const effectiveLimit = NewsSearchService.clampLimit(limit);
-    const annLimit = effectiveLimit * ANN_OVERFETCH;
-    const cutoffDate = new Date(Date.now() - CUTOFF_HOURS * 60 * 60 * 1000);
-
+  /** Both legs to `depth` hits, fused and collapsed by story, best first. */
+  private async rankedMatches(
+    normalized: string,
+    depth: number,
+    window: SearchWindow,
+  ): Promise<{ row: ArticleRow; score: number }[]> {
+    const annLimit = depth * ANN_OVERFETCH;
     // A leg whose index is not ready is not run: it would answer nothing, and
     // the semantic leg would spend an embedding call first.
     const [vectorState, textState] = this.indexes
@@ -396,12 +517,10 @@ export class NewsSearchService {
     // whole query turned into a bare 500 with a blank screen behind it.
     const skipped = Promise.resolve<ArticleRow[]>([]);
     const [lexical, semantic] = await Promise.allSettled([
-      skipLexical
-        ? skipped
-        : this.runLexicalLeg(normalized, annLimit, cutoffDate),
+      skipLexical ? skipped : this.runLexicalLeg(normalized, annLimit, window),
       skipSemantic
         ? skipped
-        : this.runSemanticLeg(normalized, annLimit, cutoffDate),
+        : this.runSemanticLeg(normalized, annLimit, window),
     ]);
 
     // A skipped leg did not answer either.
@@ -445,9 +564,13 @@ export class NewsSearchService {
 
     // Collapse near-duplicates BEFORE slicing. Slicing first would hand the
     // limit to whichever story happened to be most syndicated.
-    const collapsed = await this.collapseFusedByStory(fused);
+    return this.collapseFusedByStory(fused);
+  }
 
-    const sliced = collapsed.slice(0, effectiveLimit);
+  /** The narrow public shape of ranked rows, with their publishers. */
+  private async toHits(
+    sliced: { row: ArticleRow; score: number }[],
+  ): Promise<NewsSearchHit[]> {
     if (sliced.length === 0) return [];
 
     const pubById = await this.fetchPublicationSources(
@@ -555,7 +678,7 @@ export class NewsSearchService {
   private async runLexicalLeg(
     normalized: string,
     annLimit: number,
-    cutoffDate: Date,
+    window: SearchWindow,
   ): Promise<ArticleRow[]> {
     // `any[]`: mongoose's `PipelineStage` union does not model `$search`.
     const pipeline: any[] = [
@@ -612,7 +735,15 @@ export class NewsSearchService {
             // Recency rides INSIDE `$search`, same reasoning as the ANN's
             // pre-filter: the alternative scores the whole collection and then
             // throws the stale half away.
-            filter: [{ range: { path: 'createdAt', gte: cutoffDate } }],
+            filter: [
+              {
+                range: {
+                  path: 'createdAt',
+                  gte: window.from,
+                  ...(window.asOf ? { lte: window.asOf } : {}),
+                },
+              },
+            ],
           },
         },
       },
@@ -642,7 +773,7 @@ export class NewsSearchService {
   private async runSemanticLeg(
     normalized: string,
     annLimit: number,
-    cutoffDate: Date,
+    window: SearchWindow,
   ): Promise<ArticleRow[]> {
     const queryEmbedding = await this.embedQuery(normalized);
 
@@ -660,9 +791,17 @@ export class NewsSearchService {
           index: 'embedding_article_data_retrieval_index',
           path: 'embedding_article_data_retrieval',
           queryVector: queryEmbedding,
-          numCandidates: annLimit * NUM_CANDIDATES_PER_RESULT,
+          numCandidates: Math.min(
+            annLimit * NUM_CANDIDATES_PER_RESULT,
+            MAX_NUM_CANDIDATES,
+          ),
           limit: annLimit,
-          filter: { createdAt: { $gte: cutoffDate } },
+          filter: {
+            createdAt: {
+              $gte: window.from,
+              ...(window.asOf ? { $lte: window.asOf } : {}),
+            },
+          },
         },
       },
       { $addFields: { score: { $meta: 'vectorSearchScore' } } },

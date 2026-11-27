@@ -140,8 +140,13 @@ export {
   NewsSearchService,
   DEFAULT_SEARCH_LIMIT,
   MAX_SEARCH_LIMIT,
+  MAX_SEARCH_PAGE_LIMIT,
+  MAX_SEARCH_DEPTH,
+  decodeSearchCursor,
+  encodeSearchCursor,
 } from './news-search/news-search.service';
-export { NewsSearchHit } from './news-search/news-search.dto';
+export type { SearchCursor } from './news-search/news-search.service';
+export { NewsSearchHit, NewsSearchPage } from './news-search/news-search.dto';
 
 // Place search and the server status answer
 export { PlaceService } from './place/place.service';

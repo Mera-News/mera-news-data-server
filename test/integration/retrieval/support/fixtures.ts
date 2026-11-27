@@ -22,7 +22,19 @@ export const hoursAgo = (hours: number): Date =>
  * fixture built from the bare text would not match.
  */
 export function vectorWithScore(topicText: string, score: number): number[] {
-  const u = FakeEmbeddingProvider.vectorFor(topicEmbedText(topicText));
+  return atScore(
+    FakeEmbeddingProvider.vectorFor(topicEmbedText(topicText)),
+    topicText,
+    score,
+  );
+}
+
+/** As `vectorWithScore`, for search, which embeds the query as typed. */
+export function searchVectorWithScore(query: string, score: number): number[] {
+  return atScore(FakeEmbeddingProvider.vectorFor(query), query, score);
+}
+
+function atScore(u: number[], topicText: string, score: number): number[] {
   const cos = 2 * score - 1;
   if (cos >= 1) return u;
   // Gram-Schmidt: a unit vector orthogonal to u.

@@ -29,6 +29,19 @@ export class TopHeadline {
       'Global cluster size across the clustering window; 0 for a singleton.',
   })
   clusterSize!: number;
+
+  @Field(() => Int, {
+    description:
+      'Distinct publishers among the cluster members, counted when the edition was built; 0 for a singleton.',
+  })
+  publisherCount!: number;
+
+  @Field(() => String, {
+    nullable: true,
+    description:
+      'Passed as after, continues right after this headline. Null where the list gives no per-headline cursor.',
+  })
+  cursor?: string | null;
 }
 
 @ObjectType()

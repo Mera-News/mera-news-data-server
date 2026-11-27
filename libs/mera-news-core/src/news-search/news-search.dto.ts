@@ -47,3 +47,19 @@ export class NewsSearchHit {
   })
   score!: number;
 }
+
+@ObjectType({
+  description:
+    'One page of searchNews hits. Best effort: each page ranks the same frozen 48h window again, so a hit can repeat or be missed across pages.',
+})
+export class NewsSearchPage {
+  @Field(() => [NewsSearchHit])
+  hits!: NewsSearchHit[];
+
+  @Field(() => String, {
+    nullable: true,
+    description:
+      'Passed as after, reads the next page. Null on the last page, or 2500 hits deep.',
+  })
+  nextCursor?: string | null;
+}

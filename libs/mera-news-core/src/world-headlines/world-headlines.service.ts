@@ -161,6 +161,7 @@ export class WorldHeadlinesService {
     return {
       headlines: await this.topHeadlines.hydrate(
         filtered.slice(offset, offset + first),
+        { offset },
       ),
       facets,
       editionBuiltAt: edition.builtAt ?? null,

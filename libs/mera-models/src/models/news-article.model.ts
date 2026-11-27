@@ -508,6 +508,12 @@ NewsArticleSchema.index({ tags_status: 1 }, { sparse: true });
 // on); a deployment with autoIndex off creates it by hand.
 NewsArticleSchema.index({ url_security_state: 1, createdAt: -1 });
 
+// Newest first across every source (`articlesForCountry` GLOBAL, order NEWEST):
+// the index above cannot give that order under its `$ne`, so without this one
+// the whole 48h window is sorted in memory. Mongoose builds it at boot
+// (autoIndex is on); a deployment with autoIndex off creates it by hand.
+NewsArticleSchema.index({ createdAt: -1, _id: -1 });
+
 // 48h retention enforced by a MongoDB TTL keyed on the payload `ingestedAt`
 // (NOT insert time) so replays cannot extend an article's life. TTL only acts
 // on docs whose `ingestedAt` is a Date; docs without it are untouched and are

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { GraphQLError } from 'graphql';
 import {
   NewsArticle,
   NewsArticleDocument,
@@ -19,8 +20,7 @@ import { DEFAULT_PAGE_SIZE } from '../constants';
 import { toHeadlineScopeKey } from '../headline-scope/headline-scope-key';
 import {
   DEFAULT_HEADLINE_VIEW_WINDOW_HOURS,
-  editionProjectionForWindow,
-  pickEditionEntries,
+  editionListExpression,
 } from '../headline-scope/headline-window';
 import {
   TopHeadline,
@@ -32,34 +32,66 @@ interface HeadlineEntryMeta {
   articleId: Types.ObjectId;
   stableClusterId?: string | null;
   clusterSize?: number | null;
+  publisherCount?: number | null;
+}
+
+/** Where a hydrated slice sits in its list, for the per-headline cursors. */
+interface SlicePosition {
+  offset: number;
+  /** Set for an edition read: such cursors are refused once it is rebuilt. */
+  builtAt?: Date | null;
+}
+
+/** `first` is clamped to this, never refused. */
+export const MAX_TOP_HEADLINES_PAGE_SIZE = 200;
+
+/** `$slice` takes a 32-bit position. */
+const MAX_SLICE_POSITION = 2 ** 31 - 1;
+
+interface OffsetCursor {
+  offset: number;
+  builtAt?: string;
 }
 
 /**
  * Encode an offset-based cursor. The materialized editions are an ordered array,
  * so paging is a simple offset — the keyset cursors in `@mera/shared` are
- * sort-key-shaped and don't fit, hence this tiny local codec.
+ * sort-key-shaped and don't fit, hence this tiny local codec. `pageInfo`
+ * cursors never carry `builtAt`, so shipped clients keep paging across a
+ * rebuild exactly as before.
  */
-function encodeOffsetCursor(offset: number): string {
-  return Buffer.from(JSON.stringify({ offset }), 'utf-8').toString('base64');
+function encodeOffsetCursor(offset: number, builtAt?: Date | null): string {
+  const payload: OffsetCursor = builtAt
+    ? { offset, builtAt: new Date(builtAt).toISOString() }
+    : { offset };
+  return Buffer.from(JSON.stringify(payload), 'utf-8').toString('base64');
 }
 
 /** Decode an offset cursor. Returns null on any malformed/invalid input. */
-function decodeOffsetCursor(cursor: string): number | null {
+function decodeOffsetCursor(cursor: string): OffsetCursor | null {
   try {
     const parsed = JSON.parse(
       Buffer.from(cursor, 'base64').toString('utf-8'),
-    ) as { offset?: unknown };
+    ) as { offset?: unknown; builtAt?: unknown };
     if (
       typeof parsed.offset === 'number' &&
       Number.isInteger(parsed.offset) &&
-      parsed.offset >= 0
+      parsed.offset >= 0 &&
+      (parsed.builtAt === undefined || typeof parsed.builtAt === 'string')
     ) {
-      return parsed.offset;
+      return parsed.builtAt === undefined
+        ? { offset: parsed.offset }
+        : { offset: parsed.offset, builtAt: parsed.builtAt };
     }
     return null;
   } catch {
     return null;
   }
+}
+
+function clampPageSize(first: number): number {
+  const n = Number.isFinite(first) ? Math.floor(first) : DEFAULT_PAGE_SIZE;
+  return Math.min(Math.max(n, 1), MAX_TOP_HEADLINES_PAGE_SIZE);
 }
 
 @Injectable()
@@ -89,52 +121,114 @@ export class TopHeadlinesService {
     windowHours: number = DEFAULT_HEADLINE_VIEW_WINDOW_HOURS,
   ): Promise<TopHeadlinesForCountryResponse> {
     const scopeKey = toHeadlineScopeKey(countryCode);
+    const pageSize = clampPageSize(first);
+    const cursor = after ? decodeOffsetCursor(after) : null;
+    const offset = Math.min(cursor?.offset ?? 0, MAX_SLICE_POSITION);
 
-    const edition = await this.headlineEditionModel
-      .findOne({ scopeKey })
-      .select(editionProjectionForWindow(windowHours))
-      .lean()
+    // Only the page is read: an edition holds up to a thousand entries per view.
+    const [edition] = await this.headlineEditionModel
+      .aggregate<{
+        builtAt?: Date | null;
+        total: number;
+        page: HeadlineEntryMeta[];
+      }>([
+        { $match: { scopeKey } },
+        { $project: { builtAt: 1, list: editionListExpression(windowHours) } },
+        {
+          $project: {
+            builtAt: 1,
+            total: { $size: '$list' },
+            page: { $slice: ['$list', offset, pageSize] },
+          },
+        },
+      ])
       .exec();
 
-    if (!edition) {
-      // Cold scope — no edition built yet. Fall back to the live path so the app
-      // still gets headlines (uncluster-deduped) until the next build runs. The
-      // fallback has no cluster context, so each headline is emitted as a
-      // singleton (stableClusterId: null, clusterSize: 0).
-      const fallback = await this.newsArticleService.articlesForCountry(
-        countryCode,
-        first,
-        after,
-        windowHours,
+    const builtAt = edition?.builtAt ?? null;
+    if (
+      cursor?.builtAt !== undefined &&
+      (!builtAt || new Date(builtAt).toISOString() !== cursor.builtAt)
+    ) {
+      throw new GraphQLError(
+        'The headline list was rebuilt after this cursor was given out. Start again from the first page.',
+        { extensions: { code: 'EDITION_CHANGED' } },
       );
-      const headlines: TopHeadline[] = fallback.articles.map((article) => ({
-        article,
-        stableClusterId: null,
-        clusterSize: 0,
-      }));
-      return { ...fallback, headlines, editionBuiltAt: null };
     }
 
-    const entries = pickEditionEntries(edition, windowHours);
-    const entryCount = entries.length;
+    if (!edition) {
+      return this.liveFallback(
+        countryCode,
+        pageSize,
+        after,
+        cursor ? offset : null,
+        windowHours,
+      );
+    }
 
-    const offset = after ? (decodeOffsetCursor(after) ?? 0) : 0;
-    const slice = entries.slice(offset, offset + first);
-
-    const headlines = await this.hydrate(slice);
-
-    const hasNextPage = offset + first < entryCount;
-    const endCursor = hasNextPage ? encodeOffsetCursor(offset + first) : null;
-
+    const headlines = await this.hydrate(edition.page, { offset, builtAt });
+    const hasNextPage = offset + pageSize < edition.total;
     return {
       headlines,
       articles: headlines.map((h) => h.article),
       pageInfo: {
-        endCursor,
+        endCursor: hasNextPage ? encodeOffsetCursor(offset + pageSize) : null,
         hasNextPage,
-        pageSize: first,
+        pageSize,
       },
-      editionBuiltAt: edition.builtAt ?? null,
+      editionBuiltAt: builtAt,
+    };
+  }
+
+  /**
+   * Cold scope, no edition built yet: the live path, so the app still gets
+   * headlines (uncluster-deduped) until the next build runs. It has no cluster
+   * context, so each headline is a singleton (stableClusterId null, sizes 0).
+   * It pages by offset like an edition; `offset` is null only for a keyset
+   * cursor this path gave out before, which still pages as it did.
+   */
+  private async liveFallback(
+    countryCode: string | null | undefined,
+    pageSize: number,
+    after: string | undefined,
+    offset: number | null,
+    windowHours: number,
+  ): Promise<TopHeadlinesForCountryResponse> {
+    const keyset = !!after && offset === null;
+    const start = offset ?? 0;
+    const live = keyset
+      ? await this.newsArticleService.articlesForCountry(
+          countryCode,
+          pageSize,
+          after,
+          windowHours,
+        )
+      : await this.newsArticleService.articlesForCountryAtOffset(
+          countryCode,
+          start,
+          pageSize,
+          windowHours,
+        );
+    const headlines: TopHeadline[] = live.articles.map((article, i) => ({
+      article,
+      stableClusterId: null,
+      clusterSize: 0,
+      publisherCount: 0,
+      cursor: keyset ? null : encodeOffsetCursor(start + i + 1),
+    }));
+    const { hasNextPage } = live.pageInfo;
+    return {
+      headlines,
+      articles: live.articles,
+      pageInfo: {
+        endCursor: keyset
+          ? live.pageInfo.endCursor
+          : hasNextPage
+            ? encodeOffsetCursor(start + pageSize)
+            : null,
+        hasNextPage,
+        pageSize,
+      },
+      editionBuiltAt: null,
     };
   }
 
@@ -146,7 +240,10 @@ export class TopHeadlinesService {
    * copied from the populated `publicationSourceId`, and the multi-KB embedding
    * vectors are excluded from the read.
    */
-  async hydrate(entries: HeadlineEntryMeta[]): Promise<TopHeadline[]> {
+  async hydrate(
+    entries: HeadlineEntryMeta[],
+    position?: SlicePosition,
+  ): Promise<TopHeadline[]> {
     if (entries.length === 0) {
       return [];
     }
@@ -202,7 +299,7 @@ export class TopHeadlinesService {
     }
 
     const ordered: TopHeadline[] = [];
-    for (const entry of entries) {
+    for (const [index, entry] of entries.entries()) {
       const doc = byId.get(entry.articleId.toString());
       if (!doc) {
         // Article TTL'd out since the edition was built — drop the slot whole.
@@ -212,6 +309,7 @@ export class TopHeadlinesService {
       const liveSize = stableClusterId
         ? (liveSizeByStableId.get(stableClusterId) ?? 0)
         : 0;
+      const clusterSize = liveSize > 1 ? liveSize : 0;
       ordered.push({
         article: {
           ...doc,
@@ -221,7 +319,14 @@ export class TopHeadlinesService {
         // Live cluster size, self-inclusive. 0 when the stable cluster no longer
         // exists or has collapsed to a singleton — so the card never advertises
         // related articles the detail screen can't show.
-        clusterSize: liveSize > 1 ? liveSize : 0,
+        clusterSize,
+        // An edition built before the field existed has none: 0 until the next
+        // build (hourly) writes it, rather than a count read per request.
+        publisherCount: clusterSize > 0 ? (entry.publisherCount ?? 0) : 0,
+        // Counted on the slice as read, so a dropped slot never shifts the next one.
+        cursor: position
+          ? encodeOffsetCursor(position.offset + index + 1, position.builtAt)
+          : null,
       });
     }
     return ordered;

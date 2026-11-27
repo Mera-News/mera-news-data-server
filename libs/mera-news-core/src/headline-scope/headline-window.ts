@@ -46,3 +46,28 @@ export function pickEditionEntries<T>(
   }
   return edition.entries ?? [];
 }
+
+/**
+ * Aggregation expression for one view's ranked list, chosen as
+ * `pickEditionEntries` chooses it, so a page can be cut with `$slice` in the
+ * database instead of reading every entry.
+ */
+export function editionListExpression(windowHours: number): object {
+  const entries = { $ifNull: ['$entries', []] };
+  if (windowHours === DEFAULT_HEADLINE_VIEW_WINDOW_HOURS) return entries;
+  return {
+    $let: {
+      vars: {
+        view: {
+          $first: {
+            $filter: {
+              input: { $ifNull: ['$views', []] },
+              cond: { $eq: ['$$this.windowHours', windowHours] },
+            },
+          },
+        },
+      },
+      in: { $ifNull: ['$$view.entries', entries] },
+    },
+  };
+}

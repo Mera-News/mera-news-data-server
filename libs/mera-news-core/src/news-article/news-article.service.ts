@@ -165,6 +165,7 @@ export class NewsArticleService {
     first: number = DEFAULT_PAGE_SIZE,
     after?: string,
     windowHours: number = TOP_HEADLINES_WINDOW_HOURS,
+    skip = 0,
   ): Promise<ArticlesForPublicationSourceResponse> {
     const cutoff = new Date(Date.now() - windowHours * MS_PER_HOUR);
 
@@ -228,6 +229,7 @@ export class NewsArticleService {
 
     pipeline.push(
       { $sort: { maxClusterSize: -1, createdAt: -1, _id: -1 } },
+      ...(skip > 0 ? [{ $skip: skip }] : []),
       { $limit: first + 1 },
       // Re-attach the `publicationSource` virtual (mirrors `articleById`) and
       // drop the heavy join arrays + select:false embedding vectors that
@@ -262,24 +264,22 @@ export class NewsArticleService {
       NewsArticle & { maxClusterSize?: number; createdAt: Date }
     >;
 
-    let endCursor: string | null = null;
-    if (articles.length > 0) {
-      const lastItem = articles[articles.length - 1];
-      const cursorPayload: ClusterSizeCursor = {
-        maxClusterSize: lastItem.maxClusterSize ?? 0,
-        createdAt: new Date(lastItem.createdAt).toISOString(),
-        _id: lastItem._id.toString(),
-      };
-      endCursor = encodeCursor(cursorPayload);
-    }
+    const itemCursors = articles.map((item) =>
+      encodeCursor<ClusterSizeCursor>({
+        maxClusterSize: item.maxClusterSize ?? 0,
+        createdAt: new Date(item.createdAt).toISOString(),
+        _id: item._id.toString(),
+      }),
+    );
 
     return {
       articles: articles as unknown as NewsArticle[],
       pageInfo: {
-        endCursor,
+        endCursor: itemCursors.at(-1) ?? null,
         hasNextPage,
         pageSize: first,
       },
+      itemCursors,
     };
   }
 
@@ -406,44 +406,71 @@ export class NewsArticleService {
       return true;
     });
 
-    let endCursor: string | null = null;
-    if (page.length > 0) {
-      const lastRaw = page[page.length - 1];
-      const cursorPayload: CreatedAtCursor = {
-        createdAt: new Date(lastRaw.createdAt).toISOString(),
-        _id: lastRaw._id.toString(),
-      };
-      endCursor = encodeCursor(cursorPayload);
-    }
+    const cursorOf = (row: { createdAt: Date; _id: unknown }) =>
+      encodeCursor<CreatedAtCursor>({
+        createdAt: new Date(row.createdAt).toISOString(),
+        _id: String(row._id),
+      });
+    const lastRaw = page.at(-1);
 
     return {
       articles: articles as unknown as NewsArticle[],
       pageInfo: {
-        endCursor,
+        endCursor: lastRaw ? cursorOf(lastRaw) : null,
         hasNextPage,
         pageSize,
       },
+      itemCursors: articles.map(cursorOf),
     };
   }
 
   /**
-   * Top headlines across all of a country's sources. A null/"GLOBAL"
-   * countryCode drops the source filter (all countries).
+   * Top headlines across all of a country's sources, or with `NEWEST` its
+   * newest articles. A null/"GLOBAL" countryCode drops the source filter (all
+   * countries).
    */
   async articlesForCountry(
     countryCode: string | null | undefined,
     first: number = DEFAULT_PAGE_SIZE,
     after?: string,
     windowHours: number = TOP_HEADLINES_WINDOW_HOURS,
+    order: PublisherArticleSort = 'TOP_HEADLINES',
   ): Promise<ArticlesForPublicationSourceResponse> {
-    let baseMatch: QueryFilter<NewsArticleDocument> = {};
-    if (countryCode && countryCode !== 'GLOBAL') {
-      const sourceIds = await this.publicationSourceIdsFor({
-        country_code: countryCode,
-      });
-      baseMatch = { publicationSourceId: { $in: sourceIds } };
+    const baseMatch = await this.countryMatch(countryCode);
+    if (order === 'NEWEST') {
+      return this.newestArticles(baseMatch, first, after);
     }
     return this.topHeadlines(baseMatch, first, after, windowHours);
+  }
+
+  /**
+   * The `articlesForCountry` top-headline order read at a position instead of
+   * after a keyset cursor: the cold-scope fallback of `topHeadlinesForCountry`
+   * pages by offset, as its editions do.
+   */
+  async articlesForCountryAtOffset(
+    countryCode: string | null | undefined,
+    offset: number,
+    first: number,
+    windowHours: number = TOP_HEADLINES_WINDOW_HOURS,
+  ): Promise<ArticlesForPublicationSourceResponse> {
+    return this.topHeadlines(
+      await this.countryMatch(countryCode),
+      first,
+      undefined,
+      windowHours,
+      offset,
+    );
+  }
+
+  private async countryMatch(
+    countryCode: string | null | undefined,
+  ): Promise<QueryFilter<NewsArticleDocument>> {
+    if (!countryCode || countryCode === 'GLOBAL') return {};
+    const sourceIds = await this.publicationSourceIdsFor({
+      country_code: countryCode,
+    });
+    return { publicationSourceId: { $in: sourceIds } };
   }
 
   /**

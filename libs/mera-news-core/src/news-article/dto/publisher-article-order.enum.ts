@@ -1,16 +1,16 @@
 import { registerEnumType } from '@nestjs/graphql';
 
-/** Ordering for `articlesForPublisher`. */
+/** Ordering for `articlesForPublisher` and `articlesForCountry`. */
 export enum PublisherArticleOrder {
   /** The original view: last 24h, ranked by largest cluster size. */
   TOP_HEADLINES = 'TOP_HEADLINES',
-  /** Newest first across all of the publisher's feeds, 48h, deduped by URL. */
+  /** Newest first across all of the scope's feeds, 48h, deduped by URL. */
   NEWEST = 'NEWEST',
 }
 
 registerEnumType(PublisherArticleOrder, {
   name: 'PublisherArticleOrder',
-  description: 'Ordering for articlesForPublisher.',
+  description: 'Ordering for articlesForPublisher and articlesForCountry.',
   valuesMap: {
     TOP_HEADLINES: {
       description:

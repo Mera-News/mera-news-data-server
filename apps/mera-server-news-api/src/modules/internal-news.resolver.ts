@@ -248,7 +248,7 @@ export class InternalNewsResolver {
   @Query(() => TopHeadlinesForCountryResponse, {
     name: 'topHeadlinesForCountry',
     description:
-      'A country\'s precomputed, cluster-deduplicated top headlines (each big story appears once), paged over the materialized edition. A null or "GLOBAL" countryCode spans all countries. windowHours ranks the stories most covered in the last 6, 12, 24 (default) or 48 hours. Falls back to the live path (editionBuiltAt: null) when no edition exists yet.',
+      'A country\'s precomputed, cluster-deduplicated top headlines (each big story appears once), paged over the materialized edition. A null or "GLOBAL" countryCode spans all countries. windowHours ranks the stories most covered in the last 6, 12, 24 (default) or 48 hours. Falls back to the live path (editionBuiltAt: null) when no edition exists yet. A headline cursor answers EDITION_CHANGED once its edition is rebuilt; pageInfo.endCursor keeps paging across a rebuild.',
   })
   async topHeadlinesForCountry(
     @Args('countryCode', {
@@ -261,7 +261,7 @@ export class InternalNewsResolver {
       type: () => Int,
       nullable: true,
       defaultValue: DEFAULT_PAGE_SIZE,
-      description: 'Number of items to fetch',
+      description: 'Number of items to fetch, clamped to 1..200.',
     })
     first?: number,
     @Args('after', {
@@ -313,8 +313,25 @@ export class InternalNewsResolver {
     })
     first?: number,
     @Args('after', { type: () => String, nullable: true }) after?: string,
+    @Args('order', {
+      type: () => PublisherArticleOrder,
+      nullable: true,
+      defaultValue: PublisherArticleOrder.TOP_HEADLINES,
+      description:
+        'TOP_HEADLINES (default) keeps the original view. NEWEST is newest first over 48h, at most 50 per page.',
+    })
+    order?: PublisherArticleOrder,
   ): Promise<ArticlesForPublicationSourceResponse> {
     assertKeysetCursor(after);
+    if (order === PublisherArticleOrder.NEWEST) {
+      return this.newsArticleService.articlesForCountry(
+        countryCode,
+        first ?? DEFAULT_PAGE_SIZE,
+        after,
+        undefined,
+        'NEWEST',
+      );
+    }
     return this.newsArticleService.articlesForCountry(
       countryCode,
       first ?? DEFAULT_PAGE_SIZE,
