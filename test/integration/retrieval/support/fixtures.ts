@@ -209,10 +209,19 @@ export async function seedCluster(
 export async function seedHeadlineEdition(
   connection: Connection,
   scopeKey: string,
-  articleIds: Types.ObjectId[],
+  articleIds: Array<
+    | Types.ObjectId
+    | {
+        articleId: Types.ObjectId;
+        cards?: { articleId: Types.ObjectId; lang?: string; score?: number }[];
+      }
+  >,
 ): Promise<void> {
-  const entries = articleIds.map((articleId, i) => ({
-    articleId,
+  const entries = articleIds.map((item, i) => ({
+    articleId: item instanceof Types.ObjectId ? item : item.articleId,
+    ...(!(item instanceof Types.ObjectId) && item.cards
+      ? { cards: item.cards }
+      : {}),
     clusterId: null,
     stableClusterId: null,
     clusterSize: 0,

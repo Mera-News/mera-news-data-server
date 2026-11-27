@@ -98,6 +98,10 @@ export interface HeadlineArticleInput {
   image_url?: string | null;
   /** The article's story (seed article id, hex); null or absent when it seeds its own. */
   story_key?: string | null;
+  /** Base language tag, interned. Null or absent when unknown. */
+  lang?: string | null;
+  /** The publisher's reading score. Null or absent when unscored. */
+  score?: number | null;
 }
 
 /** The article's cluster-article-link for this run (one per article). */
@@ -112,6 +116,13 @@ export interface HeadlineClusterInput {
   stableClusterId: string | null;
 }
 
+/** The best article of a story in one language. */
+export interface HeadlineCardOutput {
+  articleId: string;
+  lang: string | null;
+  score: number | null;
+}
+
 /** One ordered output slot. Ids are hex strings; the service maps to ObjectId. */
 export interface HeadlineEntryOutput {
   articleId: string;
@@ -120,6 +131,8 @@ export interface HeadlineEntryOutput {
   clusterSize: number;
   inScopeCount: number;
   rank: number;
+  /** One card per language, in representative order. Always at least one. */
+  cards: HeadlineCardOutput[];
   /** Sum of capped per-market contributions. Undefined without `sourceMeta`. */
   breadthScore?: number;
   /** Distinct countries covering the story. Undefined without `sourceMeta`. */
@@ -168,6 +181,7 @@ function perMarket(
  * pubDate clamped to createdAt) → _id desc.
  * Singleton tail: createdAt desc → _id desc, minus copies (same `story_key ?? _id`)
  * of any clustered member or of an earlier kept singleton.
+ * Each entry carries one card per language (see `buildCards`).
  * Whole list is truncated to `cap`; `rank` mirrors the final index.
  */
 export function buildScopeEdition(
@@ -237,6 +251,7 @@ export function buildScopeEdition(
         clusterSize: meta.clusterSize ?? 0,
         inScopeCount: members.length,
         rank: 0, // assigned after final ordering
+        cards: buildCards(members),
         ...breadth,
       },
       inScopeCount: members.length,
@@ -285,6 +300,7 @@ export function buildScopeEdition(
     clusterSize: 0,
     inScopeCount: 1,
     rank: 0,
+    cards: buildCards([a]),
     ...computeBreadth([a], sourceMeta, marketCap, soloMarketWeight),
   }));
 
@@ -361,16 +377,41 @@ function publishedAt(a: HeadlineArticleInput): number {
 function pickRepresentative(
   members: HeadlineArticleInput[],
 ): HeadlineArticleInput {
-  return [...members].sort((a, b) => {
-    const aHasImage = a.image_url ? 1 : 0;
-    const bHasImage = b.image_url ? 1 : 0;
-    if (aHasImage !== bHasImage) return descNum(aHasImage, bHasImage);
+  return [...members].sort(compareRepresentative)[0];
+}
 
-    const aPub = publishedAt(a);
-    const bPub = publishedAt(b);
-    if (aPub !== bPub) return descNum(aPub, bPub);
+function compareRepresentative(
+  a: HeadlineArticleInput,
+  b: HeadlineArticleInput,
+): number {
+  const aHasImage = a.image_url ? 1 : 0;
+  const bHasImage = b.image_url ? 1 : 0;
+  if (aHasImage !== bHasImage) return descNum(aHasImage, bHasImage);
 
-    // _id desc
-    return a._id < b._id ? 1 : a._id > b._id ? -1 : 0;
-  })[0];
+  const aPub = publishedAt(a);
+  const bPub = publishedAt(b);
+  if (aPub !== bPub) return descNum(aPub, bPub);
+
+  // _id desc
+  return a._id < b._id ? 1 : a._id > b._id ? -1 : 0;
+}
+
+/**
+ * One card per language: within a language the highest score wins (an
+ * unscored article loses to any scored one, a score of 0 included), ties go to
+ * representative order. Cards are returned in the representative order of
+ * their articles.
+ */
+function buildCards(members: HeadlineArticleInput[]): HeadlineCardOutput[] {
+  const best = new Map<string | null, HeadlineArticleInput>();
+  for (const m of [...members].sort(compareRepresentative)) {
+    const key = m.lang ?? null;
+    const held = best.get(key);
+    if (!held || (m.score ?? -1) > (held.score ?? -1)) best.set(key, m);
+  }
+  return [...best.values()].sort(compareRepresentative).map((m) => ({
+    articleId: m._id,
+    lang: m.lang ?? null,
+    score: m.score ?? null,
+  }));
 }

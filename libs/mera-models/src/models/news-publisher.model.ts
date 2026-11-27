@@ -54,6 +54,13 @@ export class NewsPublisher {
   @Prop()
   subscription_uri?: string;
 
+  /**
+   * Phone reading score, a whole number from 0 to 100, from the reading check.
+   * Absent when the publication has none. Written by the reading-check sync.
+   */
+  @Prop({ type: Number })
+  readingScore?: number;
+
   @Field({ defaultValue: true })
   @Prop({ default: true })
   is_active!: boolean;

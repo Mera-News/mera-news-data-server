@@ -713,3 +713,112 @@ describe('buildScopeEdition — breadth ranking (GLOBAL scope)', () => {
     expect(countryScope[0].clusterId).toBe('cl-one-market');
   });
 });
+
+describe('buildScopeEdition cards', () => {
+  const cl = clusterMap([['K', { clusterSize: 3, stableClusterId: 's' }]]);
+  const linksFor = (ids: string[]) =>
+    linkMap(ids.map((id) => [id, { clusterId: 'K', confidence: 0.9 }]));
+  const build = (members: HeadlineArticleInput[]) =>
+    buildScopeEdition(
+      'GLOBAL',
+      members,
+      linksFor(members.map((m) => m._id)),
+      cl,
+      100,
+    )[0];
+
+  it('keeps one card per language, the best-scored article, without changing the representative', () => {
+    const entry = build([
+      article({
+        _id: 'en-60',
+        lang: 'en',
+        score: 60,
+        image_url: 'https://i/1',
+      }),
+      article({ _id: 'en-90', lang: 'en', score: 90 }),
+      article({ _id: 'fr-x', lang: 'fr' }),
+    ]);
+    expect(entry.articleId).toBe('en-60');
+    expect(entry.cards).toHaveLength(2);
+    expect(entry.cards.find((c) => c.lang === 'en')?.articleId).toBe('en-90');
+    expect(entry.cards.find((c) => c.lang === 'fr')?.score).toBeNull();
+  });
+
+  it('breaks a score tie in representative order', () => {
+    const entry = build([
+      article({
+        _id: 'older-img',
+        lang: 'en',
+        score: 80,
+        image_url: 'https://i/1',
+        createdAt: new Date('2026-07-20T08:00:00Z'),
+        pubDate: new Date('2026-07-20T08:00:00Z'),
+      }),
+      article({ _id: 'newer', lang: 'en', score: 80 }),
+    ]);
+    expect(entry.cards.map((c) => c.articleId)).toEqual(['older-img']);
+  });
+
+  it('treats unscored as lower than a score of 0', () => {
+    const entry = build([
+      article({ _id: 'zero', lang: 'en', score: 0 }),
+      article({ _id: 'none', lang: 'en', image_url: 'https://i/1' }),
+    ]);
+    expect(entry.cards.map((c) => c.articleId)).toEqual(['zero']);
+  });
+
+  it('orders cards by representative order, not language or score', () => {
+    const entry = build([
+      article({ _id: 'en-a', lang: 'en', score: 99 }),
+      article({ _id: 'fr-a', lang: 'fr', score: 10, image_url: 'https://i/1' }),
+    ]);
+    expect(entry.cards.map((c) => c.lang)).toEqual(['fr', 'en']);
+  });
+
+  it('gives one card equal to the representative when no language or score is set', () => {
+    const entries = buildScopeEdition(
+      'GLOBAL',
+      [article({ _id: 'a' }), article({ _id: 'b' }), article({ _id: 'c' })],
+      linkMap([
+        ['a', { clusterId: 'K', confidence: 0.9 }],
+        ['b', { clusterId: 'K', confidence: 0.9 }],
+      ]),
+      cl,
+      100,
+    );
+    expect(entries).toHaveLength(2);
+    for (const e of entries) {
+      expect(e.cards).toEqual([
+        { articleId: e.articleId, lang: null, score: null },
+      ]);
+    }
+  });
+
+  it('gives a singleton one card with its language and score', () => {
+    const [entry] = buildScopeEdition(
+      'GLOBAL',
+      [article({ _id: 'solo', lang: 'de', score: 41 })],
+      linkMap([]),
+      clusterMap([]),
+      100,
+    );
+    expect(entry.cards).toEqual([{ articleId: 'solo', lang: 'de', score: 41 }]);
+  });
+
+  it('gives the same cards for shuffled input', () => {
+    const members = [
+      article({ _id: 'm1', lang: 'en', score: 70 }),
+      article({ _id: 'm2', lang: 'en', score: 70, image_url: 'https://i/1' }),
+      article({ _id: 'm3', lang: 'fr', score: 20 }),
+      article({ _id: 'm4', lang: 'fr' }),
+    ];
+    const expected = build(members).cards;
+    for (const seed of [
+      [1, 2, 3],
+      [3, 1, 2],
+      [2, 2, 1],
+    ]) {
+      expect(build(shuffle(members, seed)).cards).toEqual(expected);
+    }
+  });
+});
