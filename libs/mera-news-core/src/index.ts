@@ -127,6 +127,14 @@ export { PublicationProfile } from './publication-profile/dto/publication-profil
 // World headlines
 export { WorldHeadlinesService } from './world-headlines/world-headlines.service';
 export {
+  READER_LANGUAGE_MIN_SCORE,
+  readingRank,
+  pickEditionCard,
+  orderEditionForLanguage,
+  type EditionCardLike,
+  type EditionEntryLike,
+} from './world-headlines/reading-rank';
+export {
   CanonicalTopicFacet,
   WorldHeadlinesResponse,
 } from './world-headlines/world-headlines.dto';
