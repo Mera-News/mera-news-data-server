@@ -194,6 +194,13 @@ export class ArticleWithClusters {
   @Field(() => String, { nullable: true })
   story_key?: string | null;
 
+  @Field(() => Int, {
+    nullable: true,
+    description:
+      "The publication's phone reading score, 0 to 100, from the reading check. Null when it has none.",
+  })
+  readingScore?: number | null;
+
   // Packed sign-bit sidecar of `embedding_article_data_retrieval` — 768 bits
   // (96 bytes), base64-encoded, for on-device Hamming-distance near-duplicate
   // candidate generation. bit i = (vector[i] >= 0), packed MSB-first within

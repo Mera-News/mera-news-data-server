@@ -7,6 +7,7 @@ import {
   HEADLINE_VIEW_WINDOWS_HOURS,
   WorldHeadlinesResponse,
   WorldHeadlinesService,
+  parseReaderLanguage,
 } from '@mera/news-core';
 import { assertOffsetCursor } from './cursor-guard';
 
@@ -66,8 +67,16 @@ export class WorldHeadlinesResolver {
     windowHours?: number,
     @Args('canonicalTopicIds', { type: () => [ID], nullable: true })
     canonicalTopicIds?: string[],
+    @Args('language', {
+      type: () => String,
+      nullable: true,
+      description:
+        "The reader's language as a base language tag, such as en or hi. Each story shows its best-scored report in that language when one scores well enough, otherwise its best-scored report in any language. Stories shown in the reader's language come first, then the rest, each group in the usual order. Absent: the edition's own order and reports.",
+    })
+    language?: string,
   ): Promise<WorldHeadlinesResponse> {
     assertCaps(countryCode, after, canonicalTopicIds ?? []);
+    const readerLanguage = parseReaderLanguage(language);
     const window = windowHours ?? DEFAULT_HEADLINE_VIEW_WINDOW_HOURS;
     if (!(HEADLINE_VIEW_WINDOWS_HOURS as readonly number[]).includes(window)) {
       throw new GraphQLError(
@@ -88,6 +97,7 @@ export class WorldHeadlinesResolver {
       after,
       window,
       canonicalTopicIds ?? [],
+      readerLanguage,
     );
   }
 }

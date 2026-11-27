@@ -56,6 +56,7 @@ type PublisherRow = Pick<
   | 'publication_type'
   | 'categories'
   | 'subscription_uri'
+  | 'readingScore'
 > & { _id: Types.ObjectId };
 
 /**
@@ -238,6 +239,11 @@ export class PublicationProfileService {
       countryName: publisher?.country_name ?? main?.country_name ?? null,
       sourceNames: unique(sources.map((s) => s.publication_name)),
       subscriptionUri: present(subscriptionUri) ? subscriptionUri : null,
+      readingScore:
+        typeof publisher?.readingScore === 'number' &&
+        Number.isFinite(publisher.readingScore)
+          ? publisher.readingScore
+          : null,
     };
   }
 }

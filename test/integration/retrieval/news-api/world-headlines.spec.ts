@@ -321,3 +321,171 @@ describe('the client document for world headlines', () => {
     expect(res.body.data!.worldHeadlines.facets).toEqual([]);
   });
 });
+
+describe('world headlines for a reader language', () => {
+  let api: NewsApi;
+  beforeAll(async () => {
+    api = await bootNewsApi();
+  });
+  afterAll(() => api.close());
+  beforeEach(() => api.resetDb());
+
+  const QUERY =
+    'query($first: Int, $after: String, $lang: String, $ids: [ID!]) { worldHeadlines(countryCode: "GLOBAL", first: $first, after: $after, language: $lang, canonicalTopicIds: $ids) { headlines { article { _id } } facets { topicId count } pageInfo { hasNextPage endCursor } } }';
+  const read = (variables: Record<string, unknown> = {}) =>
+    api.gql<Headlines>(QUERY, variables);
+  const shown = (res: Awaited<ReturnType<typeof read>>) => {
+    expect(res.body.errors).toBeUndefined();
+    return res.body.data!.worldHeadlines.headlines.map((h) => h.article._id);
+  };
+
+  async function article(): Promise<Types.ObjectId> {
+    const source = await seedSource(api.connection);
+    return seedArticle(api.connection, { source });
+  }
+  const card = (articleId: Types.ObjectId, lang?: string, score?: number) => ({
+    articleId,
+    ...(lang ? { lang } : {}),
+    ...(score !== undefined ? { score } : {}),
+  });
+  const entry = (
+    articleId: Types.ObjectId,
+    cards: ReturnType<typeof card>[],
+  ) => ({ articleId, cards });
+
+  it('keeps the stored order and reports without a language', async () => {
+    const [a, b, c, d] = [
+      await article(),
+      await article(),
+      await article(),
+      await article(),
+    ];
+    await seedHeadlineEdition(api.connection, 'GLOBAL', [
+      entry(a, [card(a, 'en', 40), card(d, 'fr', 90)]),
+      entry(b, [card(b, 'de', 100)]),
+      entry(c, [card(c, 'fr', 60)]),
+    ]);
+    expect(shown(await read())).toEqual([a, b, c].map(idOf));
+  });
+
+  it('shows the reader-language card of a story', async () => {
+    const aEn = await article();
+    const aFr = await article();
+    await seedHeadlineEdition(api.connection, 'GLOBAL', [
+      entry(aEn, [card(aEn, 'en', 40), card(aFr, 'fr', 90)]),
+    ]);
+    expect(shown(await read({ lang: 'fr' }))).toEqual([idOf(aFr)]);
+  });
+
+  it('partitions the reader-language stories first and never sorts by score', async () => {
+    const [big, other, fr, low] = [
+      await article(),
+      await article(),
+      await article(),
+      await article(),
+    ];
+    await seedHeadlineEdition(api.connection, 'GLOBAL', [
+      entry(big, [card(big, 'en', 10)]),
+      entry(other, [card(other, 'de', 100)]),
+      entry(fr, [card(fr, 'fr', 60)]),
+      entry(low, [card(low, 'fr', 40)]),
+    ]);
+    expect(shown(await read({ lang: 'fr' }))).toEqual(
+      [fr, big, other, low].map(idOf),
+    );
+  });
+
+  it('a reader-language card under 50 loses the card and gets no head start', async () => {
+    const [first, r, o] = [await article(), await article(), await article()];
+    await seedHeadlineEdition(api.connection, 'GLOBAL', [
+      entry(first, [card(first, 'en', 20)]),
+      entry(r, [card(r, 'fr', 45), card(o, 'en', 70)]),
+    ]);
+    expect(shown(await read({ lang: 'fr' }))).toEqual([first, o].map(idOf));
+  });
+
+  it('a reader-language card at 50 or more beats a score of 100 and leads', async () => {
+    const [first, o, r] = [await article(), await article(), await article()];
+    await seedHeadlineEdition(api.connection, 'GLOBAL', [
+      entry(first, [card(first, 'en', 20)]),
+      entry(o, [card(o, 'en', 100), card(r, 'fr', 50)]),
+    ]);
+    expect(shown(await read({ lang: 'fr' }))).toEqual([r, first].map(idOf));
+  });
+
+  it('serves the request without a language when nothing is scored', async () => {
+    const [a, b, c] = [await article(), await article(), await article()];
+    await seedHeadlineEdition(api.connection, 'GLOBAL', [
+      entry(a, [card(a, 'en'), card(c, 'fr')]),
+      entry(b, [card(b, 'en')]),
+    ]);
+    expect(shown(await read({ lang: 'fr' }))).toEqual(shown(await read()));
+  });
+
+  it('serves a legacy edition without cards as it is', async () => {
+    const [a, b] = [await article(), await article()];
+    await seedHeadlineEdition(api.connection, 'GLOBAL', [a, b]);
+    expect(shown(await read({ lang: 'en' }))).toEqual(shown(await read()));
+  });
+
+  it('filters and counts facets on the stored article, then shows the card', async () => {
+    const [stored, frCard, other] = [
+      await article(),
+      await article(),
+      await article(),
+    ];
+    await seedHeadlineEdition(api.connection, 'GLOBAL', [
+      entry(stored, [card(stored, 'en', 10), card(frCard, 'fr', 80)]),
+      entry(other, [card(other, 'en', 10)]),
+    ]);
+    const topic = await seedTopic(api.connection, 'cat:/Sports', {
+      is_canonical: true,
+      canonical_path: '/Sports',
+      canonical_level: 1,
+    });
+    await seedTopicLink(api.connection, topic, stored, 0.9);
+    const filtered = await read({ lang: 'fr', ids: [idOf(topic)] });
+    expect(shown(filtered)).toEqual([idOf(frCard)]);
+    const plain = await read({ ids: [idOf(topic)] });
+    expect(filtered.body.data!.worldHeadlines.facets).toEqual(
+      plain.body.data!.worldHeadlines.facets,
+    );
+    expect(plain.body.data!.worldHeadlines.facets).toHaveLength(1);
+  });
+
+  it('pages over the reordered stories without repeats', async () => {
+    const ids = [
+      await article(),
+      await article(),
+      await article(),
+      await article(),
+    ];
+    await seedHeadlineEdition(api.connection, 'GLOBAL', [
+      entry(ids[0], [card(ids[0], 'en', 80)]),
+      entry(ids[1], [card(ids[1], 'en', 80)]),
+      entry(ids[2], [card(ids[2], 'fr', 80)]),
+      entry(ids[3], [card(ids[3], 'fr', 80)]),
+    ]);
+    const one = await read({ lang: 'fr', first: 2 });
+    expect(shown(one)).toEqual([ids[2], ids[3]].map(idOf));
+    expect(one.body.data!.worldHeadlines.pageInfo.hasNextPage).toBe(true);
+    const two = await read({
+      lang: 'fr',
+      first: 2,
+      after: one.body.data!.worldHeadlines.pageInfo.endCursor,
+    });
+    expect(shown(two)).toEqual([ids[0], ids[1]].map(idOf));
+    expect(two.body.data!.worldHeadlines.pageInfo.hasNextPage).toBe(false);
+  });
+
+  it('rejects a language that is not a base tag and treats empty as absent', async () => {
+    const [a, b] = [await article(), await article()];
+    await seedHeadlineEdition(api.connection, 'GLOBAL', [
+      entry(a, [card(a, 'en', 10)]),
+      entry(b, [card(b, 'fr', 90)]),
+    ]);
+    const bad = await read({ lang: 'english' });
+    expect(bad.body.errors?.[0].extensions?.code).toBe('BAD_REQUEST');
+    expect(shown(await read({ lang: '' }))).toEqual(shown(await read()));
+  });
+});

@@ -21,6 +21,7 @@ import {
 } from '../headline-scope/headline-window';
 import { TopHeadlinesService } from '../top-headlines/top-headlines.service';
 import { WorldHeadlinesResponse } from './world-headlines.dto';
+import { orderEditionForLanguage } from './reading-rank';
 
 // Same offset cursor as TopHeadlinesService (its codec is private there).
 const encodeCursor = (offset: number): string =>
@@ -69,6 +70,7 @@ export class WorldHeadlinesService {
     after: string | undefined,
     windowHours: number = DEFAULT_HEADLINE_VIEW_WINDOW_HOURS,
     canonicalTopicIds: string[] = [],
+    language: string | null = null,
   ): Promise<WorldHeadlinesResponse> {
     const edition = await this.editionModel
       .findOne({ scopeKey: toHeadlineScopeKey(countryCode) })
@@ -156,11 +158,13 @@ export class WorldHeadlinesService {
       else if (topicsByArticle.size === 0) unavailableReason = 'NO_TOPIC_LINKS';
     }
 
+    // Topic filter and facets above stay keyed on the stored article id; only the shown card and order follow the language.
+    const ordered = orderEditionForLanguage(filtered, language);
     const offset = after ? decodeCursor(after) : 0;
-    const hasNextPage = offset + first < filtered.length;
+    const hasNextPage = offset + first < ordered.length;
     return {
       headlines: await this.topHeadlines.hydrate(
-        filtered.slice(offset, offset + first),
+        ordered.slice(offset, offset + first),
         { offset },
       ),
       facets,

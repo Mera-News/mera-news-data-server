@@ -1,4 +1,4 @@
-import { ObjectType, Field, ID } from '@nestjs/graphql';
+import { ObjectType, Field, ID, Int } from '@nestjs/graphql';
 
 /**
  * One publication as the app's publication page shows it: a PUBLISHER, never a
@@ -59,4 +59,11 @@ export class PublicationProfile {
       "The publisher's subscribe page. Null means it sells no consumer subscription.",
   })
   subscriptionUri!: string | null;
+
+  @Field(() => Int, {
+    nullable: true,
+    description:
+      "The publication's phone reading score, 0 to 100, from the reading check. Null when it has none.",
+  })
+  readingScore!: number | null;
 }

@@ -79,8 +79,14 @@ export { topicEmbedText } from './embedding-provider/topic-embed-text';
 
 // Catalogue reads moved in P2 so the internal news API can serve the same
 // root fields as the app-facing API.
-export { TopHeadlinesService, clampTopHeadlinesPageSize } from './top-headlines/top-headlines.service';
-export { TopHeadlinesForCountryResponse, TopHeadline } from './top-headlines/dto/top-headlines-for-country-response.dto';
+export {
+  TopHeadlinesService,
+  clampTopHeadlinesPageSize,
+} from './top-headlines/top-headlines.service';
+export {
+  TopHeadlinesForCountryResponse,
+  TopHeadline,
+} from './top-headlines/dto/top-headlines-for-country-response.dto';
 export {
   NewsClusterService,
   MAX_ARTICLES_PER_CLUSTER_PAGE,
@@ -126,6 +132,7 @@ export { PublicationProfile } from './publication-profile/dto/publication-profil
 
 // World headlines
 export { WorldHeadlinesService } from './world-headlines/world-headlines.service';
+export { parseReaderLanguage } from './world-headlines/reader-language';
 export {
   READER_LANGUAGE_MIN_SCORE,
   readingRank,
