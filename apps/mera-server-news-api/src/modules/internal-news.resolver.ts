@@ -128,7 +128,7 @@ export class InternalNewsResolver {
       type: () => String,
       nullable: true,
       description:
-        "The reader's language as a base tag of two or three letters. Picks which report of each headline story is returned; the order of the stories stays the edition's. Absent: the edition's own reports.",
+        "The reader's language as a base language tag, such as en or hi. Picks which report of each headline story is returned; the order of the stories stays the edition's. Absent: the edition's own reports.",
     })
     language?: string,
   ): Promise<PersonaQueryResult> {
