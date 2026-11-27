@@ -96,6 +96,32 @@ export const CLIENT_DOCUMENTS: Record<string, string> = {
   }
 `,
 
+  GetArticleIdsForPersonaForLanguage: `
+  query GetArticleIdsForPersonaForLanguage($query: PersonaQueryInput!, $language: String) {
+    articleIdsForPersona(query: $query, language: $language) {
+      topicResults {
+        topicText
+        articleIds
+        matchMeta {
+          articleId
+          vectorScore
+          textScore
+          stableClusterId
+        }
+        nextCursor
+        hasNextPage
+      }
+      headlineResults {
+        scope
+        countryCode
+        articleIds
+        clusterSizes
+        stableClusterIds
+      }
+    }
+  }
+`,
+
   // The app's reachability check sends this under the same operation name as the client's feed document.
   GetArticleIdsForPersonaCheck: `
 query GetArticleIdsForPersona($query: PersonaQueryInput!) {
@@ -208,6 +234,43 @@ query GetArticleIdsForPersona($query: PersonaQueryInput!) {
   }
 `,
 
+  GetArticlesForStoriesScored: `
+  query GetArticlesForStoriesScored($articleIds: [ID!]!) {
+    articlesForStories(articleIds: $articleIds) {
+      articles {
+
+        _id
+        clusters {
+          clusterId
+          confidence
+          stableClusterId
+        }
+        title_en
+        title
+        description_en
+        article_url
+        image_url
+        country_code
+        publication_name
+        language_code
+        pubDate
+        geo_tags {
+          city
+          region
+          countryCode
+        }
+        entities
+        event_type
+        category
+        maxClusterSize
+
+        story_key
+        readingScore
+      }
+    }
+  }
+`,
+
   GetArticlesForStoriesLegacy: `
   query GetArticlesForStoriesLegacy($articleIds: [ID!]!) {
     articlesForStories(articleIds: $articleIds) {
@@ -274,6 +337,43 @@ query GetArticleIdsForPersona($query: PersonaQueryInput!) {
         maxClusterSize
 
         story_key
+      }
+    }
+  }
+`,
+
+  GetArticlesForTopicsByIdsScored: `
+  query GetArticlesForTopicsByIdsScored($articleIds: [ID!]!) {
+    articlesForTopicsByIds(articleIds: $articleIds) {
+      articles {
+
+        _id
+        clusters {
+          clusterId
+          confidence
+          stableClusterId
+        }
+        title_en
+        title
+        description_en
+        article_url
+        image_url
+        country_code
+        publication_name
+        language_code
+        pubDate
+        geo_tags {
+          city
+          region
+          countryCode
+        }
+        entities
+        event_type
+        category
+        maxClusterSize
+
+        story_key
+        readingScore
       }
     }
   }
@@ -454,6 +554,52 @@ query GetArticleIdsForPersona($query: PersonaQueryInput!) {
   GetWorldHeadlines: `
   query GetWorldHeadlines($countryCode: String, $first: Int, $after: String, $windowHours: Int, $canonicalTopicIds: [ID!]) {
     worldHeadlines(countryCode: $countryCode, first: $first, after: $after, windowHours: $windowHours, canonicalTopicIds: $canonicalTopicIds) {
+
+      headlines {
+        stableClusterId
+        clusterSize
+        article {
+          _id
+          title
+          title_en_internal_only
+          description
+          description_en_internal_only
+          pubDate
+          article_url
+          image_url
+          creator
+          source_uri
+          original_language_code
+          geo_tags {
+            city
+            region
+            countryCode
+          }
+          event_type
+          entities
+          publicationSource {
+            _id
+            publication_name
+            country_code
+          }
+        }
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+      editionBuiltAt
+      facets {
+        topicId
+        count
+      }
+    }
+  }
+`,
+
+  GetWorldHeadlinesForLanguage: `
+  query GetWorldHeadlinesForLanguage($countryCode: String, $first: Int, $after: String, $windowHours: Int, $canonicalTopicIds: [ID!], $language: String) {
+    worldHeadlines(countryCode: $countryCode, first: $first, after: $after, windowHours: $windowHours, canonicalTopicIds: $canonicalTopicIds, language: $language) {
 
       headlines {
         stableClusterId
@@ -796,6 +942,7 @@ query GetArticleIdsForPersona($query: PersonaQueryInput!) {
       countryName
       sourceNames
       subscriptionUri
+      readingScore
     }
   }
 `,

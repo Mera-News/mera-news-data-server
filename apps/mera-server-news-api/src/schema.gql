@@ -61,6 +61,11 @@ type ArticleWithClusters {
   maxClusterSize: Int
   pubDate: DateTime!
   publication_name: String
+
+  """
+  The publication's phone reading score, 0 to 100, from the reading check. Null when it has none.
+  """
+  readingScore: Int
   significance: Int
   story_key: String
   title: String
@@ -403,6 +408,11 @@ type PublicationProfile {
   publicationType: String
 
   """
+  The publication's phone reading score, 0 to 100, from the reading check. Null when it has none.
+  """
+  readingScore: Int
+
+  """
   Every source publication_name under this publisher. Key per-publication preferences on these.
   """
   sourceNames: [String!]!
@@ -474,7 +484,13 @@ type Query {
   Fetch a single article by ID. Returns null if not found (e.g. TTL’d out).
   """
   articleById(id: ID!): NewsArticle
-  articleIdsForPersona(query: PersonaQueryInput!): PersonaQueryResult!
+  articleIdsForPersona(
+    """
+    The reader's language as a base tag of two or three letters. Picks which report of each headline story is returned; the order of the stories stays the edition's. Absent: the edition's own reports.
+    """
+    language: String
+    query: PersonaQueryInput!
+  ): PersonaQueryResult!
   articlesForCountry(
     after: String
     countryCode: String
@@ -591,7 +607,7 @@ type Query {
     """ISO country code, or null/"GLOBAL" for all countries"""
     countryCode: String
 
-    """Number of items to fetch"""
+    """Number of items to fetch, clamped to 1..200."""
     first: Int = 20
 
     """
@@ -603,7 +619,18 @@ type Query {
   """
   Edition headlines for a country (null or "GLOBAL" spans all), optionally filtered to canonical topics (OR, descendants included), with per-topic facets over the unfiltered edition. No edition: the live fallback page (editionBuiltAt null) and no facets, or no headlines when filtered. A filter that cannot apply answers no headlines and unavailableReason.
   """
-  worldHeadlines(after: String, canonicalTopicIds: [ID!], countryCode: String, first: Int = 20, windowHours: Int = 24): WorldHeadlinesResponse!
+  worldHeadlines(
+    after: String
+    canonicalTopicIds: [ID!]
+    countryCode: String
+    first: Int = 20
+
+    """
+    The reader's language as a base language tag, such as en or hi. Each story shows its best-scored report in that language when one scores well enough, otherwise its best-scored report in any language. Stories shown in the reader's language come first, then the rest, each group in the usual order. Absent: the edition's own order and reports.
+    """
+    language: String
+    windowHours: Int = 24
+  ): WorldHeadlinesResponse!
 }
 
 """
