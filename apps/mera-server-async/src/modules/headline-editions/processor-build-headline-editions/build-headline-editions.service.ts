@@ -250,7 +250,6 @@ export class BuildHeadlineEditionsService {
           doc.original_language_code != null
             ? intern(baseLang(doc.original_language_code))
             : (langBySource.get(sourceId) ?? null),
-        score: scoreBySource.get(sourceId) ?? null,
         // Null for a self-seeded row: the builder falls back to _id, and ~530k
         // duplicate id strings stay off the heap.
         story_key:
@@ -342,6 +341,7 @@ export class BuildHeadlineEditionsService {
             breadthRanking: this.breadthRanking,
             marketCap: this.marketCap,
             soloMarketWeight: this.soloMarketWeight,
+            scoreBySource,
           },
         );
         listsByView.set(viewHours, viewList);

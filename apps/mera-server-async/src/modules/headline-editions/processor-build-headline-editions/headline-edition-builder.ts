@@ -87,6 +87,11 @@ export interface HeadlineRankingOptions {
    * HEADLINE_GLOBAL_SOLO_MARKET_WEIGHT (1.0 — no damping).
    */
   soloMarketWeight?: number;
+  /**
+   * publicationSourceId -> the publisher's reading score, for the cards. Kept
+   * per source, not per article: the pool holds about half a million articles.
+   */
+  scoreBySource?: Map<string, number>;
 }
 
 /** A lean in-scope article the builder ranks. `_id` is the article id (hex). */
@@ -100,8 +105,6 @@ export interface HeadlineArticleInput {
   story_key?: string | null;
   /** Base language tag, interned. Null or absent when unknown. */
   lang?: string | null;
-  /** The publisher's reading score. Null or absent when unscored. */
-  score?: number | null;
 }
 
 /** The article's cluster-article-link for this run (one per article). */
@@ -251,7 +254,7 @@ export function buildScopeEdition(
         clusterSize: meta.clusterSize ?? 0,
         inScopeCount: members.length,
         rank: 0, // assigned after final ordering
-        cards: buildCards(members),
+        cards: [], // built after the cap, for kept entries only
         ...breadth,
       },
       inScopeCount: members.length,
@@ -300,7 +303,7 @@ export function buildScopeEdition(
     clusterSize: 0,
     inScopeCount: 1,
     rank: 0,
-    cards: buildCards([a]),
+    cards: [],
     ...computeBreadth([a], sourceMeta, marketCap, soloMarketWeight),
   }));
 
@@ -309,9 +312,18 @@ export function buildScopeEdition(
     ...singletonEntries,
   ].slice(0, Math.max(0, cap));
 
-  // rank mirrors the final position.
+  // rank mirrors the final position. Cards are built only for the entries
+  // kept: clusters come first in `ordered`, then singletons in kept order.
+  const scoreOf = (a: HeadlineArticleInput): number | null =>
+    options.scoreBySource?.get(a.publicationSourceId) ?? null;
   ordered.forEach((entry, index) => {
     entry.rank = index;
+    entry.cards = buildCards(
+      index < clusterEntries.length
+        ? membersByCluster.get(entry.clusterId!)!
+        : [keptSingletons[index - clusterEntries.length]],
+      scoreOf,
+    );
   });
 
   return ordered;
@@ -402,16 +414,27 @@ function compareRepresentative(
  * representative order. Cards are returned in the representative order of
  * their articles.
  */
-function buildCards(members: HeadlineArticleInput[]): HeadlineCardOutput[] {
-  const best = new Map<string | null, HeadlineArticleInput>();
+function buildCards(
+  members: HeadlineArticleInput[],
+  scoreOf: (a: HeadlineArticleInput) => number | null,
+): HeadlineCardOutput[] {
+  const best = new Map<
+    string | null,
+    { article: HeadlineArticleInput; score: number | null }
+  >();
   for (const m of [...members].sort(compareRepresentative)) {
     const key = m.lang ?? null;
+    const score = scoreOf(m);
     const held = best.get(key);
-    if (!held || (m.score ?? -1) > (held.score ?? -1)) best.set(key, m);
+    if (!held || (score ?? -1) > (held.score ?? -1)) {
+      best.set(key, { article: m, score });
+    }
   }
-  return [...best.values()].sort(compareRepresentative).map((m) => ({
-    articleId: m._id,
-    lang: m.lang ?? null,
-    score: m.score ?? null,
-  }));
+  return [...best.values()]
+    .sort((a, b) => compareRepresentative(a.article, b.article))
+    .map(({ article, score }) => ({
+      articleId: article._id,
+      lang: article.lang ?? null,
+      score,
+    }));
 }

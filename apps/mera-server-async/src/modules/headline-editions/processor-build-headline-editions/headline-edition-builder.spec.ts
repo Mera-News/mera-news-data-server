@@ -716,6 +716,16 @@ describe('buildScopeEdition — breadth ranking (GLOBAL scope)', () => {
 
 describe('buildScopeEdition cards', () => {
   const cl = clusterMap([['K', { clusterSize: 3, stableClusterId: 's' }]]);
+  // Scores live per source, as the service passes them: one source per article here.
+  const scores = new Map<string, number>();
+  const art = ({
+    score,
+    ...rest
+  }: Partial<HeadlineArticleInput> & { _id: string; score?: number }) => {
+    const source = `src-${rest._id}`;
+    if (score !== undefined) scores.set(source, score);
+    return article({ ...rest, publicationSourceId: source });
+  };
   const linksFor = (ids: string[]) =>
     linkMap(ids.map((id) => [id, { clusterId: 'K', confidence: 0.9 }]));
   const build = (members: HeadlineArticleInput[]) =>
@@ -725,18 +735,19 @@ describe('buildScopeEdition cards', () => {
       linksFor(members.map((m) => m._id)),
       cl,
       100,
+      { scoreBySource: scores },
     )[0];
 
   it('keeps one card per language, the best-scored article, without changing the representative', () => {
     const entry = build([
-      article({
+      art({
         _id: 'en-60',
         lang: 'en',
         score: 60,
         image_url: 'https://i/1',
       }),
-      article({ _id: 'en-90', lang: 'en', score: 90 }),
-      article({ _id: 'fr-x', lang: 'fr' }),
+      art({ _id: 'en-90', lang: 'en', score: 90 }),
+      art({ _id: 'fr-x', lang: 'fr' }),
     ]);
     expect(entry.articleId).toBe('en-60');
     expect(entry.cards).toHaveLength(2);
@@ -746,7 +757,7 @@ describe('buildScopeEdition cards', () => {
 
   it('breaks a score tie in representative order', () => {
     const entry = build([
-      article({
+      art({
         _id: 'older-img',
         lang: 'en',
         score: 80,
@@ -754,23 +765,23 @@ describe('buildScopeEdition cards', () => {
         createdAt: new Date('2026-07-20T08:00:00Z'),
         pubDate: new Date('2026-07-20T08:00:00Z'),
       }),
-      article({ _id: 'newer', lang: 'en', score: 80 }),
+      art({ _id: 'newer', lang: 'en', score: 80 }),
     ]);
     expect(entry.cards.map((c) => c.articleId)).toEqual(['older-img']);
   });
 
   it('treats unscored as lower than a score of 0', () => {
     const entry = build([
-      article({ _id: 'zero', lang: 'en', score: 0 }),
-      article({ _id: 'none', lang: 'en', image_url: 'https://i/1' }),
+      art({ _id: 'zero', lang: 'en', score: 0 }),
+      art({ _id: 'none', lang: 'en', image_url: 'https://i/1' }),
     ]);
     expect(entry.cards.map((c) => c.articleId)).toEqual(['zero']);
   });
 
   it('orders cards by representative order, not language or score', () => {
     const entry = build([
-      article({ _id: 'en-a', lang: 'en', score: 99 }),
-      article({ _id: 'fr-a', lang: 'fr', score: 10, image_url: 'https://i/1' }),
+      art({ _id: 'en-a', lang: 'en', score: 99 }),
+      art({ _id: 'fr-a', lang: 'fr', score: 10, image_url: 'https://i/1' }),
     ]);
     expect(entry.cards.map((c) => c.lang)).toEqual(['fr', 'en']);
   });
@@ -778,13 +789,14 @@ describe('buildScopeEdition cards', () => {
   it('gives one card equal to the representative when no language or score is set', () => {
     const entries = buildScopeEdition(
       'GLOBAL',
-      [article({ _id: 'a' }), article({ _id: 'b' }), article({ _id: 'c' })],
+      [art({ _id: 'a' }), art({ _id: 'b' }), art({ _id: 'c' })],
       linkMap([
         ['a', { clusterId: 'K', confidence: 0.9 }],
         ['b', { clusterId: 'K', confidence: 0.9 }],
       ]),
       cl,
       100,
+      { scoreBySource: scores },
     );
     expect(entries).toHaveLength(2);
     for (const e of entries) {
@@ -797,20 +809,46 @@ describe('buildScopeEdition cards', () => {
   it('gives a singleton one card with its language and score', () => {
     const [entry] = buildScopeEdition(
       'GLOBAL',
-      [article({ _id: 'solo', lang: 'de', score: 41 })],
+      [art({ _id: 'solo', lang: 'de', score: 41 })],
       linkMap([]),
       clusterMap([]),
       100,
+      { scoreBySource: scores },
     );
     expect(entry.cards).toEqual([{ articleId: 'solo', lang: 'de', score: 41 }]);
   });
 
+  it('builds cards only for the entries the cap keeps', () => {
+    let reads = 0;
+    const counted = new (class extends Map<string, number> {
+      get(key: string) {
+        reads++;
+        return super.get(key);
+      }
+    })();
+    const members = ['k1', 'k2', 'k3'].map((id) => art({ _id: id }));
+    const kept = buildScopeEdition(
+      'GLOBAL',
+      [...members, art({ _id: 'k4' }), art({ _id: 'k5' })],
+      linkMap([
+        ['k1', { clusterId: 'K', confidence: 0.9 }],
+        ['k2', { clusterId: 'K', confidence: 0.9 }],
+      ]),
+      cl,
+      2,
+      { scoreBySource: counted },
+    );
+    expect(kept).toHaveLength(2);
+    // The cluster's two members and one singleton; the two cut singletons are never read.
+    expect(reads).toBe(3);
+  });
+
   it('gives the same cards for shuffled input', () => {
     const members = [
-      article({ _id: 'm1', lang: 'en', score: 70 }),
-      article({ _id: 'm2', lang: 'en', score: 70, image_url: 'https://i/1' }),
-      article({ _id: 'm3', lang: 'fr', score: 20 }),
-      article({ _id: 'm4', lang: 'fr' }),
+      art({ _id: 'm1', lang: 'en', score: 70 }),
+      art({ _id: 'm2', lang: 'en', score: 70, image_url: 'https://i/1' }),
+      art({ _id: 'm3', lang: 'fr', score: 20 }),
+      art({ _id: 'm4', lang: 'fr' }),
     ];
     const expected = build(members).cards;
     for (const seed of [
