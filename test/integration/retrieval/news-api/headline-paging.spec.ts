@@ -103,30 +103,6 @@ describe('paging headlines and country articles', () => {
       expect(page.headlines).toHaveLength(Math.min(pageSize, 3));
     });
 
-    it('keeps paging a bare offset cursor after a rebuild, and answers EDITION_CHANGED for an endCursor', async () => {
-      const seeded = await seedNld(4);
-      await seedHeadlineEdition(api.connection, 'NLD', seeded);
-      const first = (await headlines({ first: 2 })).body.data!
-        .topHeadlinesForCountry;
-      await api.connection
-        .collection('headline-edition')
-        .updateOne(
-          { scopeKey: 'NLD' },
-          { $set: { builtAt: new Date(Date.now() + 1000) } },
-        );
-      const stale = await headlines({
-        first: 2,
-        after: first.pageInfo.endCursor,
-      });
-      expect(stale.body.errors?.[0].extensions?.code).toBe('EDITION_CHANGED');
-      const bare = Buffer.from(JSON.stringify({ offset: 2 })).toString(
-        'base64',
-      );
-      const old = await headlines({ first: 2, after: bare });
-      expect(old.body.errors).toBeUndefined();
-      expect(old.body.data!.topHeadlinesForCountry.headlines).toHaveLength(2);
-    });
-
     it('continues right after any headline given its cursor', async () => {
       const articles = await seedNld(5);
       await seedHeadlineEdition(api.connection, 'NLD', articles);
@@ -144,7 +120,7 @@ describe('paging headlines and country articles', () => {
       ).toEqual(seeded.slice(2));
     });
 
-    it('answers EDITION_CHANGED for a headline cursor once the edition is rebuilt, and keeps paging by a bare cursor', async () => {
+    it('answers EDITION_CHANGED for a headline cursor once the edition is rebuilt, and keeps paging by endCursor', async () => {
       const seeded = await seedNld(4);
       await seedHeadlineEdition(api.connection, 'NLD', seeded);
       const first = (await headlines({ first: 2 })).body.data!
@@ -165,7 +141,7 @@ describe('paging headlines and country articles', () => {
 
       const byEnd = await headlines({
         first: 2,
-        after: Buffer.from(JSON.stringify({ offset: 2 })).toString('base64'),
+        after: first.pageInfo.endCursor,
       });
       expect(byEnd.body.errors).toBeUndefined();
       expect(

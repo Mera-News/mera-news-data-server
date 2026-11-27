@@ -143,7 +143,13 @@ const encodeSearchCursor = (asOf: string, offset: number) =>
 function decodeSearchCursor(cursor: string): { asOf: string; offset: number } {
   try {
     const { asOf, from, offset } = JSON.parse(Buffer.from(cursor, 'base64').toString());
-    if (typeof asOf === 'string' && typeof from === 'string' && !Number.isNaN(Date.parse(asOf)) && Number.isInteger(offset) && offset >= 0) return { asOf, offset };
+    const asOfAt = Date.parse(asOf);
+    const fromAt = Date.parse(from);
+    // Same bounds as the full server: a forged cursor stays inside the 48h window and not ahead of this clock.
+    if (
+      typeof asOf === 'string' && typeof from === 'string' && Number.isInteger(offset) && offset >= 0 &&
+      asOfAt <= Date.now() + 5 * 60_000 && fromAt <= asOfAt && fromAt >= asOfAt - 48 * 3600_000
+    ) return { asOf, offset };
   } catch {
     // Refused below.
   }

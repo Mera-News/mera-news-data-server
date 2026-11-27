@@ -56,9 +56,9 @@ interface OffsetCursor {
 /**
  * Encode an offset-based cursor. The materialized editions are an ordered array,
  * so paging is a simple offset — the keyset cursors in `@mera/shared` are
- * sort-key-shaped and don't fit, hence this tiny local codec. Every cursor
- * carries `builtAt` when there is an edition, so a rebuilt one is detected;
- * a bare `{ offset }` cursor given out earlier still pages across a rebuild.
+ * sort-key-shaped and don't fit, hence this tiny local codec. Only a
+ * per-headline cursor carries `builtAt`; `pageInfo` cursors never do, so
+ * shipped clients keep paging across a rebuild.
  */
 function encodeOffsetCursor(offset: number, builtAt?: Date | null): string {
   const payload: OffsetCursor = builtAt
@@ -171,9 +171,7 @@ export class TopHeadlinesService {
       headlines,
       articles: headlines.map((h) => h.article),
       pageInfo: {
-        endCursor: hasNextPage
-          ? encodeOffsetCursor(offset + pageSize, builtAt)
-          : null,
+        endCursor: hasNextPage ? encodeOffsetCursor(offset + pageSize) : null,
         hasNextPage,
         pageSize,
       },

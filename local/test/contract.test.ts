@@ -240,12 +240,20 @@ describe('the contract with the full server', () => {
       if (!after) break;
     }
     assert.deepEqual(seen, whole.hits.map((h: { _id: string }) => h._id));
-    const deep = Buffer.from(JSON.stringify({ asOf: new Date().toISOString(), from: new Date(0).toISOString(), offset: 2400 })).toString('base64');
+    const deep = Buffer.from(JSON.stringify({ asOf: new Date().toISOString(), from: new Date(Date.now() - 48 * 3600_000).toISOString(), offset: 2400 })).toString('base64');
     const end = await ask(deep, 100);
     assert.equal(end.result.errors, undefined);
     assert.deepEqual({ ...(end.result.data as any).searchNewsPage }, { hits: [], nextCursor: null });
     const bad = await ask('nonsense');
     assert.equal(bad.result.errors?.[0]?.extensions?.code, 'BAD_USER_INPUT');
+    // The full server's bounds: ahead of the clock, a window past 48h, a window that starts after it ends.
+    const now = Date.now();
+    const cursor = (asOf: number, from: number) => Buffer.from(JSON.stringify({ asOf: new Date(asOf).toISOString(), from: new Date(from).toISOString(), offset: 0 })).toString('base64');
+    for (const forged of [cursor(now + 3600_000, now - 47 * 3600_000), cursor(now, now - 400 * 3600_000), cursor(now - 3600_000, now)]) {
+      const refused = await ask(forged);
+      assert.equal(refused.result.errors?.[0]?.extensions?.code, 'BAD_USER_INPUT');
+    }
+    assert.equal((await ask(cursor(now + 2 * 60_000, now - 47 * 3600_000))).result.errors, undefined);
   });
 
   it('caps an articlesForCountry NEWEST page at 50, as the full server does', async () => {

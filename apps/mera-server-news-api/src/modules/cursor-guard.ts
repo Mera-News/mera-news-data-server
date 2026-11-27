@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { GraphQLError } from 'graphql';
 
 const MAX_CURSOR_LENGTH = 512;
 const OBJECT_ID_HEX = /^[0-9a-fA-F]{24}$/;
@@ -6,8 +6,9 @@ const OBJECT_ID_HEX = /^[0-9a-fA-F]{24}$/;
 /** Any cursor: at most 512 characters, named in the refusal, never echoed. */
 export function assertCursorLength(after: string | null | undefined): void {
   if (after && after.length > MAX_CURSOR_LENGTH) {
-    throw new BadRequestException(
+    throw new GraphQLError(
       `after exceeds the maximum length of ${MAX_CURSOR_LENGTH} characters`,
+      { extensions: { code: 'BAD_USER_INPUT' } },
     );
   }
 }
@@ -43,7 +44,9 @@ export function assertOffsetCursor(after: string | null | undefined): void {
 }
 
 export function refuseCursor(): never {
-  throw new BadRequestException('after is not a valid cursor');
+  throw new GraphQLError('after is not a valid cursor', {
+    extensions: { code: 'BAD_USER_INPUT' },
+  });
 }
 
 /**

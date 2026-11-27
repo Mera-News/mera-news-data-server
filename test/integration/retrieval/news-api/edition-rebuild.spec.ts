@@ -87,7 +87,7 @@ describe('headline editions across a rebuild', () => {
     ['GetTopHeadlinesForCountry', {}],
     ['GetTopHeadlinesForCountryWindowed', { windowHours: 24 }],
   ] as const)(
-    'answers EDITION_CHANGED for the app document %s endCursor after a rebuild',
+    'keeps the app document %s paging by endCursor after a rebuild',
     async (name, extra) => {
       const { s3 } = await seedStories();
       await build();
@@ -110,7 +110,13 @@ describe('headline editions across a rebuild', () => {
         ...vars,
         after: page.pageInfo.endCursor,
       });
-      expect(second.body.errors?.[0].extensions?.code).toBe('EDITION_CHANGED');
+      expect(second.body.errors).toBeUndefined();
+      expect(second.body.data!.topHeadlinesForCountry.headlines).toHaveLength(
+        2,
+      );
+      expect(second.body.data!.topHeadlinesForCountry.editionBuiltAt).not.toBe(
+        page.editionBuiltAt,
+      );
 
       const stale = await api.gql<Headlines>(COUNTS, { after: headlineCursor });
       expect(stale.body.errors?.[0].extensions?.code).toBe('EDITION_CHANGED');

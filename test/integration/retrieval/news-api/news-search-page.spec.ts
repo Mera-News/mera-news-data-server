@@ -171,6 +171,7 @@ describe('searchNewsPage', () => {
   ])('refuses a cursor that is %s', async (_, after) => {
     const res = await page({ after });
     expect(res.body.errors?.[0].message).toBe('after is not a valid cursor');
+    expect(res.body.errors?.[0].extensions?.code).toBe('BAD_USER_INPUT');
   });
 
   it('accepts a cursor a few minutes ahead of this clock', async () => {
