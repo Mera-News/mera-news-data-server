@@ -231,7 +231,9 @@ export class BuildHeadlineEditionsService {
     // for editions built before this landed.
     const cursor = this.articleModel
       .find({ createdAt: { $gte: cutoff }, ...SERVABLE_URL_SECURITY_FILTER })
-      .select('_id publicationSourceId createdAt pubDate image_url story_key original_language_code')
+      .select(
+        '_id publicationSourceId createdAt pubDate image_url story_key original_language_code',
+      )
       .lean()
       .cursor();
 
