@@ -13,7 +13,10 @@ export const LEXICAL_WEIGHT = 1.0;
 export const SEMANTIC_WEIGHT = 0.9;
 export const MAX_SEARCH_LIMIT = 25;
 export const DEFAULT_SEARCH_LIMIT = 20;
+export const MAX_SEARCH_PAGE_LIMIT = 100;
+export const MAX_SEARCH_DEPTH = 2500;
 const OVERFETCH = 4;
+const MAX_NEAREST = 4096;
 
 /** Picks cover this many hours, counted back from the last ingest. */
 export const PERSONA_WINDOW_HOURS = 48;
@@ -33,6 +36,8 @@ export interface SearchHit {
 export interface SearchResult {
   hits: SearchHit[];
   empty: 'no_articles_yet' | 'no_match' | null;
+  /** More hits follow `offset + hits.length`. */
+  more: boolean;
 }
 
 const queryCache = new Map<string, Float32Array>();
@@ -107,14 +112,22 @@ export function articleRows(store: Store, ids: string[]): Map<string, ArticleRow
 
 /**
  * Text and meaning together, over everything stored (no time limit). Copies of one article
- * show once. An empty answer says whether the file is empty or nothing matched.
+ * show once. An empty answer says whether the file is empty or nothing matched. `offset`
+ * skips that many hits of the same ranking, for a page after the first.
  */
-export async function searchArticles(store: Store, embedder: Embedder, query: string, opts: { limit: number }): Promise<SearchResult> {
-  if (store.articleCount() === 0) return { hits: [], empty: 'no_articles_yet' };
-  const limit = Math.min(Math.max(opts.limit, 1), MAX_SEARCH_LIMIT);
+export async function searchArticles(
+  store: Store,
+  embedder: Embedder,
+  query: string,
+  opts: { limit: number; offset?: number; maxLimit?: number },
+): Promise<SearchResult> {
+  if (store.articleCount() === 0) return { hits: [], empty: 'no_articles_yet', more: false };
+  const limit = Math.min(Math.max(opts.limit, 1), opts.maxLimit ?? MAX_SEARCH_LIMIT);
+  const offset = opts.offset ?? 0;
   const text = query.trim();
-  if (!text) return { hits: [], empty: 'no_match' };
-  const pool = limit * OVERFETCH;
+  if (!text) return { hits: [], empty: 'no_match', more: false };
+  // sqlite-vec answers at most 4096 nearest per query.
+  const pool = Math.min((offset + limit) * OVERFETCH, MAX_NEAREST);
   const lexical = textMatch(store, text, pool);
   const semantic = nearest(store, await embedQueryCached(embedder, text), pool).map((h) => h.id);
   const fused = fuseByRank([
@@ -124,10 +137,20 @@ export async function searchArticles(store: Store, embedder: Embedder, query: st
   const rows = articleRows(store, fused.map((f) => f.id));
   const seenStories = new Set<string>();
   const hits: SearchHit[] = [];
+  let skipped = 0;
+  let more = false;
   for (const { id, score } of fused) {
     const row = rows.get(id);
     if (!row || seenStories.has(row.story_key)) continue;
     seenStories.add(row.story_key);
+    if (skipped < offset) {
+      skipped++;
+      continue;
+    }
+    if (hits.length === limit) {
+      more = true;
+      break;
+    }
     hits.push({
       id,
       title: row.title,
@@ -139,9 +162,8 @@ export async function searchArticles(store: Store, embedder: Embedder, query: st
       imageUrl: row.image_url,
       score,
     });
-    if (hits.length === limit) break;
   }
-  return { hits, empty: hits.length === 0 ? 'no_match' : null };
+  return { hits, empty: hits.length === 0 ? 'no_match' : null, more };
 }
 
 /** The start of the picks window: PERSONA_WINDOW_HOURS before the last ingest, or null before the first one. */

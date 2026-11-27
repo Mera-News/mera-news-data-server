@@ -19,7 +19,7 @@ import type { Embedder } from '../embed/embedder.ts';
 import type { FeedRow, Store } from '../store/store.ts';
 import sdl from '../../schema.gql';
 import { MAX_QUERY_FIELDS, queryLimitsRule } from './query-limits.ts';
-import { DEFAULT_SEARCH_LIMIT, personaWindowStart, searchArticles, topicArticles } from './retrieval.ts';
+import { DEFAULT_SEARCH_LIMIT, MAX_SEARCH_DEPTH, MAX_SEARCH_PAGE_LIMIT, personaWindowStart, searchArticles, topicArticles } from './retrieval.ts';
 
 export const MAX_QUERY_DEPTH = 12;
 const MAX_PAGE = 100;
@@ -132,20 +132,48 @@ function decodeCursor(cursor: string): [string, string] {
 }
 const page = (first: number | null | undefined) => Math.min(Math.max(first ?? 20, 1), MAX_PAGE);
 
+/**
+ * The full server's search page cursor shape, `{ asOf, from, offset }`.
+ * shortcut: only `offset` is read here, the window is not frozen, because the store
+ * changes only when an ingest runs; freeze it if pages repeat across ingests.
+ */
+const encodeSearchCursor = (asOf: string, offset: number) =>
+  Buffer.from(JSON.stringify({ asOf, from: new Date(Date.parse(asOf) - 48 * 3600_000).toISOString(), offset })).toString('base64');
+function decodeSearchCursor(cursor: string): { asOf: string; offset: number } {
+  try {
+    const { asOf, from, offset } = JSON.parse(Buffer.from(cursor, 'base64').toString());
+    if (typeof asOf === 'string' && typeof from === 'string' && !Number.isNaN(Date.parse(asOf)) && Number.isInteger(offset) && offset >= 0) return { asOf, offset };
+  } catch {
+    // Refused below.
+  }
+  throw new GraphQLError('after is not a valid cursor', { extensions: { code: 'BAD_USER_INPUT' } });
+}
+
+const searchHit = (h: Awaited<ReturnType<typeof searchArticles>>['hits'][number]) => ({
+  _id: h.id,
+  country_code: h.countryCode,
+  image_url: h.imageUrl,
+  pubDate: h.pubDate,
+  publication_name: h.publicationName,
+  score: h.score,
+  title_en: h.title,
+});
+
 type Resolver = GraphQLFieldResolver<unknown, Context, any>;
 
 const RESOLVERS: Record<string, Resolver> = {
   async searchNews(_p, { query, limit }, { store, embedder }) {
     const { hits } = await searchArticles(store, embedder, query, { limit: limit ?? DEFAULT_SEARCH_LIMIT });
-    return hits.map((h) => ({
-      _id: h.id,
-      country_code: h.countryCode,
-      image_url: h.imageUrl,
-      pubDate: h.pubDate,
-      publication_name: h.publicationName,
-      score: h.score,
-      title_en: h.title,
-    }));
+    return hits.map(searchHit);
+  },
+
+  async searchNewsPage(_p, { query, limit, after }, { store, embedder }) {
+    const { asOf, offset } = after ? decodeSearchCursor(after) : { asOf: new Date().toISOString(), offset: 0 };
+    const size = Math.min(Math.min(Math.max(limit ?? DEFAULT_SEARCH_LIMIT, 1), MAX_SEARCH_PAGE_LIMIT), MAX_SEARCH_DEPTH - offset);
+    if (size <= 0) return { hits: [], nextCursor: null };
+    const { hits, more } = await searchArticles(store, embedder, query, { limit: size, offset, maxLimit: MAX_SEARCH_PAGE_LIMIT });
+    const served = offset + hits.length;
+    return { hits: hits.map(searchHit), nextCursor: more && served < MAX_SEARCH_DEPTH ? encodeSearchCursor(asOf, served) : null };
   },
 
   articlesForTopicsByIds(_p, { articleIds }, { store }) {
@@ -156,6 +184,7 @@ const RESOLVERS: Record<string, Resolver> = {
     return { articles: fullArticles(store, articleIds).map((a) => withClusters(store, a)), dailyLimitReached: false, resetAt: null };
   },
 
+  // `order` is accepted and both orders answer newest first: the store keeps no clusters to rank by.
   articlesForCountry(_p, { countryCode, first, after }, { store }) {
     const size = page(first);
     const all = !countryCode || countryCode === 'GLOBAL';
@@ -180,6 +209,7 @@ const RESOLVERS: Record<string, Resolver> = {
     const last = articles.at(-1);
     return {
       articles: articles.map((a) => newsArticle(store, a)),
+      itemCursors: articles.map((a) => encodeCursor(a.pub_date, a.id)),
       pageInfo: { endCursor: last ? encodeCursor(last.pub_date, last.id) : null, hasNextPage: rows.length > size, pageSize: articles.length },
     };
   },

@@ -204,4 +204,47 @@ describe('the contract with the full server', () => {
     const bad = await runQuery(schema, { store, embedder }, { query: '{ articlesForCountry(after: "nonsense") { articles { _id } } }' });
     assert.equal(bad.result.errors?.[0]?.extensions?.code, 'BAD_USER_INPUT');
   });
+
+  it('answers articlesForCountry order NEWEST with one cursor per article that continues after it', async () => {
+    const ask = async (after?: string) => {
+      const { result } = await runQuery(schema, { store, embedder }, {
+        query: `{ articlesForCountry(countryCode: "GLOBAL", first: 10, order: NEWEST${after ? `, after: "${after}"` : ''}) { articles { _id } itemCursors } }`,
+      });
+      assert.equal(result.errors, undefined);
+      return (result.data as any).articlesForCountry as { articles: { _id: string }[]; itemCursors: string[] };
+    };
+    const all = await ask();
+    assert.ok(all.articles.length >= 2);
+    assert.equal(all.itemCursors.length, all.articles.length);
+    const rest = await ask(all.itemCursors[0]);
+    assert.deepEqual(rest.articles.map((a) => a._id), all.articles.slice(1).map((a) => a._id));
+  });
+
+  it('pages searchNewsPage to the end and refuses a cursor it did not give out', async () => {
+    const ask = async (after?: string | null, limit = 1) =>
+      runQuery(schema, { store, embedder }, {
+        query: 'query($after: String, $limit: Int) { searchNewsPage(query: "Harbour", limit: $limit, after: $after) { hits { _id } nextCursor } }',
+        variables: { after, limit },
+      });
+    const whole = ((await ask(null, 100)).result.data as any).searchNewsPage;
+    assert.ok(whole.hits.length >= 2);
+    assert.equal(whole.nextCursor, null);
+    const seen: string[] = [];
+    let after: string | null = null;
+    for (let pages = 0; pages < 20; pages++) {
+      const { result } = await ask(after);
+      assert.equal(result.errors, undefined);
+      const page = (result.data as any).searchNewsPage;
+      seen.push(...page.hits.map((h: { _id: string }) => h._id));
+      after = page.nextCursor;
+      if (!after) break;
+    }
+    assert.deepEqual(seen, whole.hits.map((h: { _id: string }) => h._id));
+    const deep = Buffer.from(JSON.stringify({ asOf: new Date().toISOString(), from: new Date(0).toISOString(), offset: 2400 })).toString('base64');
+    const end = await ask(deep, 100);
+    assert.equal(end.result.errors, undefined);
+    assert.deepEqual({ ...(end.result.data as any).searchNewsPage }, { hits: [], nextCursor: null });
+    const bad = await ask('nonsense');
+    assert.equal(bad.result.errors?.[0]?.extensions?.code, 'BAD_USER_INPUT');
+  });
 });
