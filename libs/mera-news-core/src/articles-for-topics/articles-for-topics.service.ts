@@ -412,6 +412,8 @@ type PublicationSourceLean = {
   feed_language_code?: string;
   // The publication source's category (surfaced on ArticleWithClusters).
   category?: string;
+  newsPublisherId?: Types.ObjectId | null;
+  readingScore?: unknown;
 };
 
 type ArticleLean = {
@@ -1301,6 +1303,7 @@ export class ArticlesForTopicsService {
    */
   async getArticleIdsForPersona(
     query: PersonaQueryInput,
+    language: string | null = null,
   ): Promise<PersonaQueryResult> {
     const limitPerTopic = query.limitPerTopic ?? 20;
 
@@ -1376,6 +1379,7 @@ export class ArticlesForTopicsService {
       ? await this.resolveHeadlineScopes(
           query.topHeadlines.scopes,
           query.topHeadlines.limitPerScope ?? 10,
+          language,
         )
       : [];
 
@@ -1459,6 +1463,7 @@ export class ArticlesForTopicsService {
       limit?: number | null;
     }[],
     limitPerScope: number,
+    language: string | null = null,
   ): Promise<HeadlineScopeResult[]> {
     const clampLimit = (n: number): number => Math.min(Math.max(n, 0), 25);
     const defaultLimit = clampLimit(limitPerScope);
@@ -1483,6 +1488,7 @@ export class ArticlesForTopicsService {
             await this.newsArticleService.topHeadlineCandidates(
               countryCode ?? null,
               poolSize,
+              language,
             );
           return {
             scope: s.scope,
@@ -2277,7 +2283,7 @@ export class ArticlesForTopicsService {
           confidence: number;
         }>
       >,
-      this.fetchPublicationSourcesByIds(
+      this.fetchPublicationSourcesWithScores(
         articles.map((a) => a.publicationSourceId),
       ),
     ]);
@@ -2339,6 +2345,11 @@ export class ArticlesForTopicsService {
         tone: a.tone,
         significance: a.significance,
         story_key: a.story_key ?? null,
+        readingScore:
+          typeof pub?.readingScore === 'number' &&
+          Number.isFinite(pub.readingScore)
+            ? pub.readingScore
+            : null,
       };
     });
 
@@ -2360,6 +2371,32 @@ export class ArticlesForTopicsService {
       .find({ _id: { $in: ids } })
       .lean()
       .exec() as Promise<PublicationSourceLean[]>;
+  }
+
+  /** As fetchPublicationSourcesByIds, plus each source's publisher reading score. */
+  private async fetchPublicationSourcesWithScores(
+    ids: Types.ObjectId[],
+  ): Promise<PublicationSourceLean[]> {
+    const uniqueIds = Array.from(new Set(ids.map((id) => id.toString()))).map(
+      (id) => new Types.ObjectId(id),
+    );
+    if (uniqueIds.length === 0) return [];
+    return this.publicationSourceModel
+      .aggregate<PublicationSourceLean>([
+        { $match: { _id: { $in: uniqueIds } } },
+        {
+          $lookup: {
+            from: 'news-publisher',
+            localField: 'newsPublisherId',
+            foreignField: '_id',
+            pipeline: [{ $project: { _id: 0, readingScore: 1 } }],
+            as: 'publisher',
+          },
+        },
+        { $set: { readingScore: { $first: '$publisher.readingScore' } } },
+        { $unset: 'publisher' },
+      ])
+      .exec();
   }
 
   private async fetchPublicationSourcesByIds(

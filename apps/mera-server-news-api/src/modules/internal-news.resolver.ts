@@ -54,6 +54,7 @@ import {
   clampTopHeadlinesPageSize,
   toGeoLanguageContext,
   toSortMode,
+  parseReaderLanguage,
 } from '@mera/news-core';
 import type { ApiKeyRequest } from '../guards/api-key.guard';
 
@@ -123,7 +124,15 @@ export class InternalNewsResolver {
   @Query(() => PersonaQueryResult, { name: 'articleIdsForPersona' })
   async articleIdsForPersona(
     @Args('query') query: PersonaQueryInput,
+    @Args('language', {
+      type: () => String,
+      nullable: true,
+      description:
+        "The reader's language as a base tag of two or three letters. Picks which report of each headline story is returned; the order of the stories stays the edition's. Absent: the edition's own reports.",
+    })
+    language?: string,
   ): Promise<PersonaQueryResult> {
+    const readerLanguage = parseReaderLanguage(language);
     const topics = query.topics ?? [];
     if (topics.length > MAX_TOPICS_PER_REQUEST) {
       throw new BadRequestException(
@@ -171,7 +180,10 @@ export class InternalNewsResolver {
       }
     }
 
-    return this.articlesForTopicsService.getArticleIdsForPersona(query);
+    return this.articlesForTopicsService.getArticleIdsForPersona(
+      query,
+      readerLanguage,
+    );
   }
 
   /**

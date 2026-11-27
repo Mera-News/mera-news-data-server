@@ -37,6 +37,7 @@ import {
   HEAVY_ARTICLE_FIELDS_EXCLUSION,
 } from '../constants';
 import { toHeadlineScopeKey } from '../headline-scope/headline-scope-key';
+import { pickEditionCard } from '../world-headlines/reading-rank';
 
 const MS_PER_HOUR = 60 * 60 * 1000;
 const TOP_HEADLINES_WINDOW_HOURS = 24;
@@ -492,6 +493,7 @@ export class NewsArticleService {
   async topHeadlineCandidates(
     countryCode: string | null | undefined,
     poolSize: number,
+    language: string | null = null,
   ): Promise<HeadlineCandidate[]> {
     // This result is user-independent per (scope, countryCode, poolSize) and
     // only changes hourly (clustering :20 cron), so cache the candidate list
@@ -500,13 +502,13 @@ export class NewsArticleService {
     const useCountryFilter = Boolean(countryCode && countryCode !== 'GLOBAL');
     const cacheKey = `top-headlines:${
       useCountryFilter ? 'country' : 'global'
-    }:${useCountryFilter ? countryCode : 'global'}:${poolSize}`;
+    }:${useCountryFilter ? countryCode : 'global'}:${poolSize}:${language ?? '-'}`;
 
     const cached = await this.cacheManager.get<HeadlineCandidate[]>(cacheKey);
     if (cached) return cached;
 
     const candidates =
-      (await this.headlineEditionCandidates(countryCode, poolSize)) ??
+      (await this.headlineEditionCandidates(countryCode, poolSize, language)) ??
       (await this.topHeadlineCandidatesLive(countryCode, poolSize));
 
     await this.cacheManager.set(
@@ -533,6 +535,7 @@ export class NewsArticleService {
   private async headlineEditionCandidates(
     countryCode: string | null | undefined,
     poolSize: number,
+    language: string | null = null,
   ): Promise<HeadlineCandidate[] | null> {
     const scopeKey = toHeadlineScopeKey(countryCode);
 
@@ -596,7 +599,7 @@ export class NewsArticleService {
     }
 
     return entries.slice(0, poolSize).map((e) => ({
-      articleId: e.articleId.toString(),
+      articleId: pickEditionCard(e, language).toString(),
       maxClusterSize: e.clusterSize ?? 0,
       largestClusterId: e.clusterId ? e.clusterId.toString() : null,
       stableClusterId: e.stableClusterId ?? null,
