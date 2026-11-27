@@ -4,6 +4,27 @@ import { Document, Types } from 'mongoose';
 export type HeadlineEditionDocument = HeadlineEdition & Document;
 
 /**
+ * The best report of a story in one language: the highest reading score among
+ * the story's articles in that language, ties broken as the representative is.
+ */
+@Schema({ _id: false })
+export class HeadlineEditionCard {
+  @Prop({ type: Types.ObjectId, required: true })
+  articleId!: Types.ObjectId;
+
+  // Base language tag of the article. Absent when unknown.
+  @Prop({ type: String })
+  lang?: string;
+
+  // The publisher's reading score. Absent when it has none.
+  @Prop({ type: Number })
+  score?: number;
+}
+
+export const HeadlineEditionCardSchema =
+  SchemaFactory.createForClass(HeadlineEditionCard);
+
+/**
  * One ordered slot in a materialized headline edition. Value object (no own
  * `_id`) — a denormalized pointer to the representative article of a cluster
  * (or a singleton) plus the ranking signals the builder used, kept so the serve
@@ -45,6 +66,11 @@ export class HeadlineEditionEntry {
   // written before the field existed.
   @Prop({ type: Number, default: null })
   publisherCount?: number | null;
+
+  // One card per language among the story's in-view articles, in the order the
+  // representative is chosen. Absent on editions written before the field.
+  @Prop({ type: [HeadlineEditionCardSchema], default: undefined })
+  cards?: HeadlineEditionCard[];
 
   // Distinct countries covering the story. Observability today; a candidate
   // "covered in N countries" UI label later.

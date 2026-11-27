@@ -23,6 +23,7 @@ import {
   HeadlineEdition,
   HeadlineEditionDocument,
 } from '@mera/models/models/headline-edition.model';
+import { baseLang } from '@mera/shared';
 import { SERVABLE_URL_SECURITY_FILTER } from '@mera/shared/url/url-security';
 import {
   JobReporter,
@@ -132,10 +133,52 @@ export class BuildHeadlineEditionsService {
     //    countries. `newsPublisherId` collapses one publisher's many regional
     //    feeds into a single voice for the breadth score.
     const sources = await this.publicationSourceModel
-      .find({})
-      .select('_id country_code newsPublisherId')
-      .lean()
+      .aggregate<{
+        _id: Types.ObjectId;
+        country_code?: string;
+        newsPublisherId?: Types.ObjectId | null;
+        detected_language_code?: string;
+        feed_language_code?: string;
+        readingScore?: unknown;
+      }>([
+        {
+          $project: {
+            country_code: 1,
+            newsPublisherId: 1,
+            detected_language_code: 1,
+            feed_language_code: 1,
+          },
+        },
+        {
+          $lookup: {
+            from: 'news-publisher',
+            localField: 'newsPublisherId',
+            foreignField: '_id',
+            pipeline: [{ $project: { _id: 0, readingScore: 1 } }],
+            as: 'publisher',
+          },
+        },
+        {
+          $project: {
+            country_code: 1,
+            newsPublisherId: 1,
+            detected_language_code: 1,
+            feed_language_code: 1,
+            readingScore: { $first: '$publisher.readingScore' },
+          },
+        },
+      ])
       .exec();
+    const interned = new Map<string, string>();
+    const intern = (tag: string | null): string | null => {
+      if (tag === null) return null;
+      const hit = interned.get(tag);
+      if (hit) return hit;
+      interned.set(tag, tag);
+      return tag;
+    };
+    const langBySource = new Map<string, string | null>();
+    const scoreBySource = new Map<string, number>();
     const countryBySource = new Map<string, string>();
     const sourceMeta = new Map<string, HeadlineSourceMeta>();
     const countryScopeKeys = new Set<string>();
@@ -144,6 +187,16 @@ export class BuildHeadlineEditionsService {
       const sourceId = src._id.toString();
       const publisherKey = src.newsPublisherId?.toString() ?? sourceId;
       publisherBySource.set(sourceId, publisherKey);
+      langBySource.set(
+        sourceId,
+        intern(baseLang(src.detected_language_code ?? src.feed_language_code)),
+      );
+      if (
+        typeof src.readingScore === 'number' &&
+        Number.isFinite(src.readingScore)
+      ) {
+        scoreBySource.set(sourceId, src.readingScore);
+      }
       const country = src.country_code;
       if (!country) continue;
       countryBySource.set(sourceId, country);
@@ -157,7 +210,7 @@ export class BuildHeadlineEditionsService {
     }
     await reporter.progress(
       20,
-      `Loaded ${sources.length} publication-source(s), ${countryScopeKeys.size} country scope(s)`,
+      `Loaded ${sources.length} publication-source(s), ${countryScopeKeys.size} country scope(s), scoredSources=${scoreBySource.size}`,
     );
 
     // 2. Stream the 48h pool, partitioning per country + one GLOBAL pass.
@@ -175,7 +228,7 @@ export class BuildHeadlineEditionsService {
     // for editions built before this landed.
     const cursor = this.articleModel
       .find({ createdAt: { $gte: cutoff }, ...SERVABLE_URL_SECURITY_FILTER })
-      .select('_id publicationSourceId createdAt pubDate image_url story_key')
+      .select('_id publicationSourceId createdAt pubDate image_url story_key original_language_code')
       .lean()
       .cursor();
 
@@ -188,6 +241,11 @@ export class BuildHeadlineEditionsService {
         createdAt: new Date(doc.createdAt),
         pubDate: new Date(doc.pubDate),
         image_url: doc.image_url ?? null,
+        lang:
+          doc.original_language_code != null
+            ? intern(baseLang(doc.original_language_code))
+            : (langBySource.get(sourceId) ?? null),
+        score: scoreBySource.get(sourceId) ?? null,
         // Null for a self-seeded row: the builder falls back to _id, and ~530k
         // duplicate id strings stay off the heap.
         story_key:
@@ -255,6 +313,11 @@ export class BuildHeadlineEditionsService {
         clusterSize: e.clusterSize,
         inScopeCount: e.inScopeCount,
         rank: e.rank,
+        cards: e.cards.map((c) => ({
+          articleId: new Types.ObjectId(c.articleId),
+          ...(c.lang !== null ? { lang: c.lang } : {}),
+          ...(c.score !== null ? { score: c.score } : {}),
+        })),
         breadthScore: e.breadthScore ?? null,
         marketCount: e.marketCount ?? null,
         publisherCount: e.clusterId
