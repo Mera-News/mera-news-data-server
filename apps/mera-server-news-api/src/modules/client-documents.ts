@@ -947,6 +947,36 @@ query GetArticleIdsForPersona($query: PersonaQueryInput!) {
   }
 `,
 
+  // The app's retry document for a server without PublicationProfile.readingScore.
+  PublicationProfileLegacy: `
+  query PublicationProfileLegacy(
+    $newsPublisherId: ID
+    $name: String
+    $countryCode: String
+    $language: String
+  ) {
+    publicationProfile(
+      newsPublisherId: $newsPublisherId
+      name: $name
+      countryCode: $countryCode
+      language: $language
+    ) {
+      newsPublisherId
+      name
+      displayName
+      homepageUrl
+      publicationType
+      categories
+      languages
+      isOfficial
+      countryCode
+      countryName
+      sourceNames
+      subscriptionUri
+    }
+  }
+`,
+
   SearchNews: `
   query SearchNews($query: String!, $limit: Int) {
     searchNews(query: $query, limit: $limit) {
